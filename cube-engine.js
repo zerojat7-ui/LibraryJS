@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v1.1.2                          ║
+ * ║              CubeEngine  v1.2.0                          ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
  * ║   범용 확률 기반 조합 추천 라이브러리                         ║
  * ╚══════════════════════════════════════════════════════════╝
@@ -124,7 +124,7 @@
             if (Math.random() < adaptiveProb) { success++; score++; }
 
             // 1000번마다 적중률 기반 확률 자동 조정
-            if (total % 1000 === 0) {
+            if (total % 500 === 0) {
                 var currentRate = success / total;
                 var diff = initialProb - currentRate;
                 adaptiveProb += diff * 0.1;
@@ -289,9 +289,31 @@
             await new Promise(function(r) { setTimeout(r, 0); });
         }
 
-        // ── Step 3: 최종 결과 ──
+        // ── Step 3: 최종 결과 (중복 제거 후 topN 선정) ──
         pool.sort(function(a, b) { return b.score - a.score; });
-        var topResults = pool.slice(0, cfg.topN);
+
+        // 결과에서 서로 중복된 조합 제거 (threshold-1개 이상 겹치면 탈락)
+        var topResults = [];
+        var dedupeThreshold = Math.max(3, cfg.pick - 1); // pick=6이면 5개 이상 겹치면 제거
+        for (var ri = 0; ri < pool.length && topResults.length < cfg.topN; ri++) {
+            var candidate = pool[ri];
+            var isDup = false;
+            for (var ti = 0; ti < topResults.length; ti++) {
+                var overlap = candidate.items.filter(function(n) {
+                    return topResults[ti].items.indexOf(n) >= 0;
+                }).length;
+                if (overlap >= dedupeThreshold) { isDup = true; break; }
+            }
+            if (!isDup) topResults.push(candidate);
+        }
+        // topN 미달 시 중복 기준 완화해서 채움
+        if (topResults.length < cfg.topN) {
+            for (var ri = 0; ri < pool.length && topResults.length < cfg.topN; ri++) {
+                var candidate = pool[ri];
+                var alreadyIn = topResults.indexOf(candidate) >= 0;
+                if (!alreadyIn) topResults.push(candidate);
+            }
+        }
 
         reportProgress(100, { phase: 'done', message: '완료!' });
 
@@ -370,7 +392,7 @@
             return cfg;
         },
 
-        version: '1.1.2'
+        version: '1.2.0'
     };
 
     // ── 내보내기 (브라우저 전역 + ES Module 둘 다 지원) ──
