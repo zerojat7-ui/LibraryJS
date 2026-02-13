@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v1.0.0                          ║
+ * ║              CubeEngine  v1.1.1                          ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
  * ║   범용 확률 기반 조합 추천 라이브러리                         ║
  * ╚══════════════════════════════════════════════════════════╝
@@ -32,10 +32,10 @@
         learningRate: 0.05,   // ML 업데이트 강도
 
         // ── 진화 루프 제어 (핵심: 사용자가 조정) ─
-        evolveTime : 300,     // 각 번호 진화 시간 (ms) — 짧을수록 UI 응답성↑, 길수록 정밀
-        loopMin    : 10000,   // evolveTime 미달 시 최소 반복 횟수 — 정확도 하한선
+        evolveTime : 150,     // 각 번호 진화 시간 (ms) — 짧을수록 UI 응답성↑, 길수록 정밀
+        loopMin    : 5000,   // evolveTime 미달 시 최소 반복 횟수 — 정확도 하한선
         rounds     : 50,      // 전체 진화 라운드 수 — 클수록 다양한 조합 탐색
-        poolSize   : 5000,    // 라운드당 조합 생성 수 — 클수록 좋은 조합 발견 가능성↑
+        poolSize   : 3000,    // 라운드당 조합 생성 수 — 클수록 좋은 조합 발견 가능성↑
 
         // ── 결과 제어 ──────────────────────────
         topN      : 5,        // 최종 반환 조합 수
@@ -338,7 +338,7 @@
         presets: {
             lotto645: {
                 items: 45, pick: 6, threshold: 5,
-                evolveTime: 300, loopMin: 10000, rounds: 50, poolSize: 5000
+                evolveTime: 150, loopMin: 5000, rounds: 50, poolSize: 3000
             },
             powerball: {
                 items: 69, pick: 5, threshold: 4,
@@ -370,7 +370,7 @@
             return cfg;
         },
 
-        version: '1.0.0'
+        version: '1.1.1'
     };
 
     // ── 내보내기 (브라우저 전역 + ES Module 둘 다 지원) ──
