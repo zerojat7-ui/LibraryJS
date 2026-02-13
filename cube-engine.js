@@ -32,8 +32,8 @@
         learningRate: 0.05,   // ML 업데이트 강도
 
         // ── 진화 루프 제어 (핵심: 사용자가 조정) ─
-        evolveTime : 800,     // 각 번호 진화 시간 (ms) — 길수록 정밀, 오래 걸림
-        loopMin    : 30000,   // evolveTime 미달 시 최소 반복 횟수 — 정확도 하한선
+        evolveTime : 300,     // 각 번호 진화 시간 (ms) — 짧을수록 UI 응답성↑, 길수록 정밀
+        loopMin    : 10000,   // evolveTime 미달 시 최소 반복 횟수 — 정확도 하한선
         rounds     : 50,      // 전체 진화 라운드 수 — 클수록 다양한 조합 탐색
         poolSize   : 5000,    // 라운드당 조합 생성 수 — 클수록 좋은 조합 발견 가능성↑
 
@@ -209,16 +209,6 @@
             // UI 블로킹 방지
             await new Promise(function(r) { setTimeout(r, 0); });
 
-            var pct = 2 + (round / cfg.rounds) * 95;
-            reportProgress(pct, {
-                phase    : 'evolving',
-                round    : round + 1,
-                totalRounds: cfg.rounds,
-                poolSize : pool.length,
-                bestScore: pool.length > 0 ? pool[0].score : 0,
-                elapsed  : Math.round(performance.now() - startTime)
-            });
-
             // 큐브 진화: 모든 항목 동시 진화
             var cubeResults = await Promise.all(
                 Array.from({ length: cfg.items }, function(_, i) {
@@ -275,10 +265,28 @@
                 pool = pool.slice(0, 500);
             }
 
+            // 풀 정렬 (bestScore 정확하게)
+            pool.sort(function(a, b) { return b.score - a.score; });
+
+            var bestNow = pool.length > 0 ? pool[0].score : 0;
+
+            // 라운드 완료 progress 재보고 (UI 즉시 반영)
+            reportProgress(2 + ((round + 1) / cfg.rounds) * 95, {
+                phase      : 'evolving',
+                round      : round + 1,
+                totalRounds: cfg.rounds,
+                poolSize   : pool.length,
+                bestScore  : bestNow,
+                elapsed    : Math.round(performance.now() - startTime)
+            });
+
             // 라운드 완료 콜백
             if (typeof cfg.onRound === 'function') {
-                cfg.onRound(round + 1, pool.length > 0 ? pool[0].score : 0);
+                cfg.onRound(round + 1, bestNow);
             }
+
+            // UI 반영 기회 보장
+            await new Promise(function(r) { setTimeout(r, 0); });
         }
 
         // ── Step 3: 최종 결과 ──
@@ -330,11 +338,11 @@
         presets: {
             lotto645: {
                 items: 45, pick: 6, threshold: 5,
-                evolveTime: 800, loopMin: 30000, rounds: 50, poolSize: 5000
+                evolveTime: 300, loopMin: 10000, rounds: 50, poolSize: 5000
             },
             powerball: {
                 items: 69, pick: 5, threshold: 4,
-                evolveTime: 800, loopMin: 30000, rounds: 50, poolSize: 5000
+                evolveTime: 300, loopMin: 10000, rounds: 50, poolSize: 5000
             },
             bingo: {
                 items: 75, pick: 5, threshold: 4,
