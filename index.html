@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -27,7 +26,7 @@
 
 <div class="grid">
     <div class="card full">
-        <h2>CubeEngine 제어 센터 (v2.0.0)</h2>
+        <h2>CubeEngine 제어 센터 (v1.3.0)</h2>
         <div class="stat-row">
             <span>엔진 상태: <span id="statusText">준비 완료</span></span>
             <span>누적 학습(Iteration): <span id="iterCount" class="stat-val">0</span></span>
@@ -36,38 +35,38 @@
         <button id="runBtn">학습 및 진화 시작 (데이터 로드 포함)</button>
     </div>
 
-
-<div class="card">
-    <h2>1. 데이터 로드 (Firebase)</h2>
-    <div class="stat-row"><span>불러온 Pool 수:</span> <span id="loadPoolSize" class="stat-val">0</span></div>
-    <pre id="loadRaw">로드된 데이터가 여기에 표시됩니다.</pre>
-</div>
-
-<div class="card">
-    <h2>2. 학습 변화 분석 (ProbMap)</h2>
-    <div class="stat-row"><span>변화된 번호 수:</span> <span id="changedCount" class="stat-val">0</span>개</div>
-    <div id="changeLog" class="log-box">대기 중...</div>
-</div>
-
-<div class="card full">
-    <h2>3. 최종 결과 및 저장 상태</h2>
-    <div class="stat-row">
-        <span>추천 조합: <span id="bestCombo" class="stat-val">대기 중</span></span>
-        <span>저장 결과: <span id="saveStatus" class="stat-val">-</span></span>
+    <div class="card">
+        <h2>1. 데이터 로드 (Firebase)</h2>
+        <div class="stat-row"><span>불러온 Pool 수:</span> <span id="loadPoolSize" class="stat-val">0</span></div>
+        <pre id="loadRaw">로드된 데이터가 여기에 표시됩니다.</pre>
     </div>
-    <pre id="finalOutput">최종 결과 데이터가 표시됩니다.</pre>
+
+    <div class="card">
+        <h2>2. 학습 변화 분석 (ProbMap)</h2>
+        <div class="stat-row"><span>변화된 번호 수:</span> <span id="changedCount" class="stat-val">0</span>개</div>
+        <div id="changeLog" class="log-box">대기 중...</div>
+    </div>
+
+    <div class="card full">
+        <h2>3. 최종 결과 및 저장 상태</h2>
+        <div class="stat-row">
+            <span>추천 조합: <span id="bestCombo" class="stat-val">대기 중</span></span>
+            <span>저장 결과: <span id="saveStatus" class="stat-val">-</span></span>
+        </div>
+        <pre id="finalOutput">최종 결과 데이터가 표시됩니다.</pre>
+    </div>
 </div>
 
-
-</div>
-
+<!-- 1) 엔진 먼저 로드 -->
 <script src="cube-engine.js"></script>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+<!-- 2) Firebase SDK (ESM → compat 버전으로 변경하여 type=module 불필요) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-    const firebaseConfig = {
+<!-- 3) 메인 로직 (일반 스크립트 - CubeEngine 바로 접근 가능) -->
+<script>
+    var firebaseConfig = {
         apiKey: "AIzaSyB4S8qkK07QYXq5yw0Coo69sZBIk0uew2E",
         authDomain: "randextraccube-engine.firebaseapp.com",
         projectId: "randextraccube-engine",
@@ -76,25 +75,25 @@
         appId: "1:515597545439:web:f1e804554406719a3cde6a"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const DOC_REF = doc(db, "CubeEngine", "main_engine_data");
+    firebase.initializeApp(firebaseConfig);
+    var db = firebase.firestore();
+    var DOC_REF = db.collection("CubeEngine").doc("main_engine_data");
 
-    const el = (id) => document.getElementById(id);
+    var el = function(id) { return document.getElementById(id); };
 
-    // 학습 변화 분석 함수
+    // 학습 변화 분석
     function analyzeLearning(oldMap, newMap) {
-        let html = "";
-        let changed = 0;
+        var html = "";
+        var changed = 0;
         if (!newMap) return;
-        for (let i = 1; i <= 45; i++) {
-            const oldP = oldMap ? oldMap[i] || 0 : 0;
-            const newP = newMap[i] || 0;
-            const diff = newP - oldP;
+        for (var i = 1; i <= 45; i++) {
+            var oldP = oldMap ? (oldMap[i] || 0) : 0;
+            var newP = newMap[i] || 0;
+            var diff = newP - oldP;
             if (Math.abs(diff) > 0.0001) {
-                const icon = diff > 0 ? "▲" : "▼";
-                const cls = diff > 0 ? "diff-plus" : "diff-minus";
-                html += `<div>No.${i}: ${oldP.toFixed(4)} → <b>${newP.toFixed(4)}</b> <span class="${cls}">${icon} ${Math.abs(diff).toFixed(4)}</span></div>`;
+                var icon = diff > 0 ? "▲" : "▼";
+                var cls  = diff > 0 ? "diff-plus" : "diff-minus";
+                html += '<div>No.' + i + ': ' + oldP.toFixed(4) + ' → <b>' + newP.toFixed(4) + '</b> <span class="' + cls + '">' + icon + ' ' + Math.abs(diff).toFixed(4) + '</span></div>';
                 changed++;
             }
         }
@@ -102,68 +101,65 @@
         el('changedCount').innerText = changed;
     }
 
-    el('runBtn').onclick = async () => {
-        const btn = el('runBtn');
+    el('runBtn').onclick = async function() {
+        var btn = el('runBtn');
         btn.disabled = true;
         el('statusText').innerText = "1단계: 데이터 로드 중...";
         el('saveStatus').innerText = "-";
 
         try {
-            // [1] 데이터 로드 (초기 데이터 없을 시 null 처리)
-            let prevData = null;
-            const snap = await getDoc(DOC_REF);
-            if (snap.exists()) {
+            // [1] 데이터 로드
+            var prevData = null;
+            var snap = await DOC_REF.get();
+            if (snap.exists) {
                 prevData = snap.data();
-                // Firestore용 객체 배열을 엔진용 2차원 배열로 복구
                 if (prevData.pool) {
-                    prevData.pool = prevData.pool.map(p => p.items);
+                    prevData.pool = prevData.pool.map(function(p) { return p.items; });
                 }
-                el('loadPoolSize').innerText = prevData.pool?.length || 0;
+                el('loadPoolSize').innerText = prevData.pool ? prevData.pool.length : 0;
                 el('iterCount').innerText = prevData.iteration || 0;
                 el('loadRaw').innerText = JSON.stringify(prevData.probMap, null, 2);
             } else {
                 el('loadRaw').innerText = "저장된 데이터 없음: 신규 학습 시작";
             }
 
-            // [2] 엔진 가동 (Persistence 데이터 주입)
+            // [2] 엔진 가동
             el('statusText').innerText = "2단계: 하이브리드 진화 중...";
-            const result = await CubeEngine.generate({
+            var result = await CubeEngine.generate({
                 ...CubeEngine.presets.lotto645,
                 rounds: 30,
-                externalProbMap: prevData?.probMap || null,
-                initialPool: prevData?.pool || null,
-                onProgress: (pct) => {
+                externalProbMap: prevData ? prevData.probMap : null,
+                initialPool: prevData ? prevData.pool : null,
+                onProgress: function(pct) {
                     el('progressFill').style.width = pct + "%";
                 }
             });
 
             // [3] 학습 변화 분석
-            analyzeLearning(prevData?.probMap, result.probMap);
+            analyzeLearning(prevData ? prevData.probMap : null, result.probMap);
 
-            // [4] 데이터 저장 (2차원 배열 오류 해결 위해 변환)
+            // [4] 저장
             el('statusText').innerText = "3단계: 결과 저장 중...";
-            const formattedPool = result.fullPool.slice(0, 100).map(combo => ({
-                items: combo
-            }));
+            var formattedPool = result.fullPool.slice(0, 100).map(function(combo) {
+                return { items: combo };
+            });
 
-            const saveData = {
+            await DOC_REF.set({
                 probMap: result.probMap,
                 pool: formattedPool,
-                iteration: (prevData?.iteration || 0) + 1,
-                generatedAt: serverTimestamp(),
+                iteration: ((prevData ? prevData.iteration : 0) || 0) + 1,
+                generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 bestScore: result.scores[0]
-            };
-
-            await setDoc(DOC_REF, saveData);
+            });
 
             // [5] 결과 표시
             el('saveStatus').innerText = "성공";
             el('bestCombo').innerText = result.results[0].join(", ");
             el('finalOutput').innerText = JSON.stringify(result.results, null, 2);
             el('statusText').innerText = "모든 작업 완료!";
-            el('iterCount').innerText = saveData.iteration;
+            el('iterCount').innerText = ((prevData ? prevData.iteration : 0) || 0) + 1;
 
-        } catch (err) {
+        } catch(err) {
             console.error(err);
             el('statusText').innerText = "오류: " + err.message;
         } finally {
