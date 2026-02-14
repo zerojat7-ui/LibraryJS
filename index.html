@@ -1,9 +1,10 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CubeEngine v1.3.0 Dashboard</title>
+    <title>CubeEngine v2.0.0 Dashboard</title>
     <style>
         :root { --primary: #03dac6; --bg: #121212; --card: #1e1e1e; }
         body { font-family: 'Pretendard', sans-serif; background: var(--bg); color: #e0e0e0; margin: 0; padding: 20px; }
@@ -35,29 +36,32 @@
         <button id="runBtn">학습 및 진화 시작 (데이터 로드 포함)</button>
     </div>
 
-    <div class="card">
-        <h2>1. 데이터 로드 (Firebase)</h2>
-        <div class="stat-row"><span>불러온 Pool 수:</span> <span id="loadPoolSize" class="stat-val">0</span></div>
-        <pre id="loadRaw">로드된 데이터가 여기에 표시됩니다.</pre>
-    </div>
-
-    <div class="card">
-        <h2>2. 학습 변화 분석 (ProbMap)</h2>
-        <div class="stat-row"><span>변화된 번호 수:</span> <span id="changedCount" class="stat-val">0</span>개</div>
-        <div id="changeLog" class="log-box">대기 중...</div>
-    </div>
-
-    <div class="card full">
-        <h2>3. 최종 결과 및 저장 상태</h2>
-        <div class="stat-row">
-            <span>추천 조합: <span id="bestCombo" class="stat-val">대기 중</span></span>
-            <span>저장 결과: <span id="saveStatus" class="stat-val">-</span></span>
-        </div>
-        <pre id="finalOutput">최종 결과 데이터가 표시됩니다.</pre>
-    </div>
+```
+<div class="card">
+    <h2>1. 데이터 로드 (Firebase)</h2>
+    <div class="stat-row"><span>불러온 Pool 수:</span> <span id="loadPoolSize" class="stat-val">0</span></div>
+    <pre id="loadRaw">로드된 데이터가 여기에 표시됩니다.</pre>
 </div>
 
-<script src="https://zerojat7-ui.github.io/LibraryJS/cube-engine.js"></script>
+<div class="card">
+    <h2>2. 학습 변화 분석 (ProbMap)</h2>
+    <div class="stat-row"><span>변화된 번호 수:</span> <span id="changedCount" class="stat-val">0</span>개</div>
+    <div id="changeLog" class="log-box">대기 중...</div>
+</div>
+
+<div class="card full">
+    <h2>3. 최종 결과 및 저장 상태</h2>
+    <div class="stat-row">
+        <span>추천 조합: <span id="bestCombo" class="stat-val">대기 중</span></span>
+        <span>저장 결과: <span id="saveStatus" class="stat-val">-</span></span>
+    </div>
+    <pre id="finalOutput">최종 결과 데이터가 표시됩니다.</pre>
+</div>
+```
+
+</div>
+
+<script src="cube-engine.js"></script>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
@@ -167,5 +171,6 @@
         }
     };
 </script>
+
 </body>
 </html>
