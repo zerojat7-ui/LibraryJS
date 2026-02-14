@@ -10,7 +10,7 @@
 (function(global) {
 ‘use strict’;
 
-```
+
 var DEFAULTS = {
     // ── 기본 설정 (필수) ──
     items     : 45,           // 전체 아이템 수 (1~items)
@@ -387,6 +387,5 @@ var CubeEngine = {
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') module.exports = CubeEngine;
 if (typeof window !== 'undefined') window.CubeEngine = CubeEngine;
 else if (typeof globalThis !== 'undefined') globalThis.CubeEngine = CubeEngine;
-```
 
 })(typeof globalThis !== ‘undefined’ ? globalThis : typeof window !== ‘undefined’ ? window : this);
