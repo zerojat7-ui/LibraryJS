@@ -384,8 +384,9 @@ var CubeEngine = {
     version: '2.0.0'
 };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = CubeEngine;
-else global.CubeEngine = CubeEngine;
+if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') module.exports = CubeEngine;
+if (typeof window !== 'undefined') window.CubeEngine = CubeEngine;
+else if (typeof globalThis !== 'undefined') globalThis.CubeEngine = CubeEngine;
 ```
 
 })(typeof globalThis !== ‘undefined’ ? globalThis : typeof window !== ‘undefined’ ? window : this);
