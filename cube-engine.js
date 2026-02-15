@@ -106,15 +106,25 @@ async function evolveHybridCube(itemNum, initialProb, cfg) {
     var adaptiveProb = initialProb;
     var score = 0, success = 0, total = 0;
     var start = performance.now();
+    var improvementRate = 0;
+    
     while (performance.now() - start < cfg.evolveTime || total < cfg.loopMin) {
         total++;
         if (Math.random() < adaptiveProb) { success++; score++; }
-        if (total % 500 === 0) {
-            adaptiveProb += (initialProb - success / total) * 0.1;
+        
+        // 더 자주 확률 적응 (더 빠른 학습)
+        if (total % 100 === 0) {
+            var currentRate = success / total;
+            var target = adaptiveProb;
+            var delta = target - currentRate;
+            
+            // 적응형 학습률 (양수/음수에 따라 다름)
+            improvementRate = delta > 0 ? 0.15 : 0.08;
+            adaptiveProb += delta * improvementRate;
             adaptiveProb = Math.min(Math.max(adaptiveProb, 0.01), 0.95);
         }
     }
-    return { item: itemNum, score: score, finalProb: adaptiveProb };
+    return { item: itemNum, score: score, finalProb: adaptiveProb, improvement: improvementRate };
 }
 
 function isTooSimilar(picked, history, threshold) {
@@ -171,8 +181,29 @@ async function generate(options) {
 
     reportProgress(5, { phase: 'evolving', message: '진화 시작...', round: 0, totalRounds: cfg.rounds, poolSize: pool.length, bestScore: 0 });
 
+    var prevBestScore = 0;
+    var noImproveCount = 0;
+    
     for (var round = 0; round < cfg.rounds; round++) {
         await new Promise(function(r) { setTimeout(r, 0); });
+
+        // ── 라운드별 확률 맵 동적 갱신 ──
+        if (round > 0 && pool.length > 0) {
+            // 이전 라운드 최고점수 조합들이 미래에 나타날 확률 증가
+            var topPoolItems = pool.slice(0, Math.min(5, pool.length));
+            topPoolItems.forEach(function(p) {
+                p.items.forEach(function(num) {
+                    if (probMap[num] !== undefined) {
+                        probMap[num] = Math.min(probMap[num] * 1.05, 0.95);
+                    }
+                });
+            });
+            
+            // 확률 정규화
+            var sum = 0;
+            validPool.forEach(function(num) { sum += probMap[num]; });
+            validPool.forEach(function(num) { probMap[num] = probMap[num] / sum * validPool.length * 0.15; });
+        }
 
         var cubeResults = await Promise.all(
             validPool.map(function(num) { return evolveHybridCube(num, probMap[num], cfg); })
@@ -211,16 +242,26 @@ async function generate(options) {
         pool.sort(function(a, b) { return b.score - a.score; });
         if (pool.length > 500) pool = pool.slice(0, 500);
 
+        // ── 학습 진행도 추적 ──
+        var currentBestScore = pool.length > 0 ? pool[0].score : 0;
+        if (currentBestScore > prevBestScore) {
+            noImproveCount = 0;
+            prevBestScore = currentBestScore;
+        } else {
+            noImproveCount++;
+        }
+
         reportProgress(5 + ((round + 1) / cfg.rounds) * 95, {
             phase: 'evolving',
             round: round + 1,
             totalRounds: cfg.rounds,
             poolSize: pool.length,
-            bestScore: pool.length > 0 ? pool[0].score : 0,
+            bestScore: currentBestScore,
+            improvement: noImproveCount === 0 ? '📈 향상' : '→ 유지',
             elapsed: Math.round(performance.now() - startTime)
         });
 
-        if (typeof cfg.onRound === 'function') cfg.onRound(round + 1, pool[0] ? pool[0].score : 0);
+        if (typeof cfg.onRound === 'function') cfg.onRound(round + 1, currentBestScore);
     }
 
     reportProgress(100, { phase: 'done', message: '완료!' });
@@ -271,7 +312,8 @@ var CubeEngine = {
         megamillions: { items: 70, pick: 5,  threshold: 4,  evolveTime: 100, rounds: 60, poolSize: 3000 },
         euromillions: { items: 50, pick: 5,  threshold: 4,  evolveTime: 90,  rounds: 55, poolSize: 2800 },
         keno        : { items: 80, pick: 20, threshold: 15, evolveTime: 150, rounds: 40, poolSize: 3500 },
-        fast        : { items: 45, pick: 6,  evolveTime: 20, rounds: 5,      poolSize: 500 },
+        fast        : { items: 45, pick: 6,  evolveTime: 80, rounds: 30,      poolSize: 1500 },
+        turbo       : { items: 45, pick: 6,  evolveTime: 40, rounds: 15,      poolSize: 800 },
         custom      : {}
     },
 
