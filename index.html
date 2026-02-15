@@ -88,6 +88,15 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 .b5{background:linear-gradient(135deg,#51cf66,#2f9e44);color:#fff}
 .cs{font-size:10px;color:var(--purple);margin-left:4px}
 
+/* poolSize 슬라이더 */
+.pool-ctrl{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pool-label{font-size:12px;color:var(--sub);white-space:nowrap;flex-shrink:0}
+.pool-slider{flex:1;min-width:160px;-webkit-appearance:none;height:5px;border-radius:3px;background:linear-gradient(to right,var(--green) 0%,var(--green) var(--pct,10%),#21262d var(--pct,10%));outline:none;cursor:pointer}
+.pool-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--green);border:2px solid #0d1117;box-shadow:0 0 5px var(--green);cursor:pointer}
+.pool-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--green);border:2px solid #0d1117;cursor:pointer}
+.pool-val{font-size:16px;font-weight:bold;color:var(--green);min-width:54px;text-align:right}
+.pool-marks{display:flex;justify-content:space-between;font-size:9px;color:var(--sub);margin-top:2px;flex:1;min-width:160px;padding:0 8px}
+
 /* 학습 경로 표시 */
 .path-box{background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:11px;font-family:monospace;margin-bottom:10px}
 .path-row{display:flex;align-items:center;gap:10px;padding:3px 0}
@@ -137,6 +146,25 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
     <span class="path-val">트랜잭션 가중평균 누적</span>
     <span class="path-match">✅ 로또 웹과 동일 로직</span>
   </div>
+  <div class="path-row">
+    <span class="path-label">🗂 당첨 히스토리</span>
+    <span class="path-val">lotto_history / lotto645_history → draws</span>
+    <span id="historyStatus" class="path-match">⏳ 로딩 대기</span>
+  </div>
+</div>
+
+<!-- poolSize 슬라이더 -->
+<div class="pool-ctrl">
+  <span class="pool-label">🎛 Pool Size</span>
+  <div style="flex:1;min-width:160px">
+    <input type="range" class="pool-slider" id="poolSlider"
+      min="100" max="10000" step="100" value="2500"
+      oninput="updatePoolSlider(this.value)">
+    <div class="pool-marks">
+      <span>100</span><span>2,500</span><span>5,000</span><span>7,500</span><span>10,000</span>
+    </div>
+  </div>
+  <span class="pool-val" id="poolValDisp">2,500</span>
 </div>
 
 <!-- 버튼 -->
@@ -249,7 +277,7 @@ var SHARED_DOC = 'shared_engine_state';
 var DOC = db.collection(SHARED_COL).doc(SHARED_DOC);
 
 // ══ 상태 ══
-var S = { iter:0, prevMap:null, curMap:null, curve:[], prevBest:0, running:false, source:'-' };
+var S = { iter:0, prevMap:null, curMap:null, curve:[], prevBest:0, running:false, source:'-', historyNums:[] };
 var $ = function(id){ return document.getElementById(id); };
 
 // ══ 터미널 ══
@@ -258,6 +286,51 @@ function tlog(msg, cls) {
   var d=document.createElement('div'); d.className=cls||'';
   d.textContent='['+new Date().toLocaleTimeString('ko-KR')+'] '+msg;
   t.appendChild(d); t.scrollTop=t.scrollHeight;
+}
+
+// ══ poolSize 슬라이더 ══
+function updatePoolSlider(val){
+  val = Math.round(val / 100) * 100;
+  var pct = ((val - 100) / (10000 - 100) * 100).toFixed(1) + '%';
+  var slider = $('poolSlider');
+  slider.style.setProperty('--pct', pct);
+  $('poolValDisp').textContent = Number(val).toLocaleString();
+}
+// 초기 슬라이더 상태 설정
+(function(){ updatePoolSlider(2500); })();
+
+// ══ 로또 웹 당첨 history 로드 ══
+//    경로: lotto_history / lotto645_history → draws[].numbers
+async function loadLottoHistory(){
+  var statusEl = $('historyStatus');
+  statusEl.className = 'path-match';
+  statusEl.textContent = '🔄 로딩 중...';
+  try {
+    var snap = await db.collection('lotto_history').doc('lotto645_history').get();
+    if(!snap.exists){
+      statusEl.className = 'path-mismatch';
+      statusEl.textContent = '⚠️ 문서 없음';
+      tlog('당첨 히스토리: 문서 없음 (lotto645_history)','tw');
+      return [];
+    }
+    var data = snap.data();
+    if(!data.draws || !data.draws.length){
+      statusEl.className = 'path-mismatch';
+      statusEl.textContent = '⚠️ draws 비어있음';
+      tlog('당첨 히스토리: draws 필드 없음 또는 빈값','tw');
+      return [];
+    }
+    var nums = data.draws.map(function(d){ return d.numbers; }).filter(function(n){ return n&&n.length===6; });
+    statusEl.className = 'path-match';
+    statusEl.textContent = '✅ '+nums.length+'회차 로드 완료';
+    tlog('✅ 당첨 히스토리 로드: '+nums.length+'회차 (로또 웹 공유 경로)','ts');
+    return nums;
+  } catch(e){
+    statusEl.className = 'path-mismatch';
+    statusEl.textContent = '❌ 로드 실패';
+    tlog('당첨 히스토리 로드 실패: '+e.message,'te');
+    return [];
+  }
 }
 
 // ══ 상태 칩 ══
@@ -352,7 +425,11 @@ function renderCurve(){
 // ══ StatCache 렌더 ══
 function renderStat(history){
   if(!history||!history.length||!CubeEngine._buildStatCache) return;
-  var stat=CubeEngine._buildStatCache(history,{items:45,history:history});
+  // history가 {numbers:[]} 형태면 2D 배열로 변환
+  var nums = history[0] && history[0].numbers
+    ? history.map(function(d){ return d.numbers; })
+    : history;
+  var stat=CubeEngine._buildStatCache(nums,{items:45,history:nums});
   function sec(id,obj){
     var arr=[]; for(var i=1;i<=45;i++) arr.push({n:i,v:obj[i]||0});
     arr.sort(function(a,b){return b.v-a.v;});
@@ -503,8 +580,23 @@ async function runEngine(){
   tlog('═══════ 학습 실행 ═══════','ts');
   tlog('경로: '+SHARED_COL+'/'+SHARED_DOC,'ti');
 
+  // poolSize 슬라이더 값 읽기
+  var poolSize = parseInt($('poolSlider').value) || 2500;
+  tlog('Pool Size: '+poolSize.toLocaleString(),'ti');
+
   try {
-    // 1. 로또 웹과 동일 경로에서 로드
+    // 1. 로또 웹 당첨 히스토리 먼저 로드 (학습에 사용)
+    $('phaseText').textContent = '당첨 데이터 로딩 중...';
+    var historyNums = await loadLottoHistory();
+    S.historyNums = historyNums;
+    if(historyNums.length){
+      tlog('학습 데이터: '+historyNums.length+'회차 → 엔진 전달','ts');
+    } else {
+      tlog('히스토리 없음 — 순수 진화 모드로 실행','tw');
+    }
+
+    // 2. 공유 엔진 상태 로드
+    $('phaseText').textContent = '학습 상태 로딩 중...';
     var prevData = await loadSharedEngineState();
     var prevIter = prevData ? (prevData.iteration||0) : 0;
     var prevPool = prevData && prevData.pool
@@ -514,9 +606,11 @@ async function runEngine(){
 
     applyLoadedState(prevData);
 
-    // 2. 학습 실행
+    // 3. 학습 실행
     var cfg = CubeEngine.withPreset('lotto645',{
-      rounds    : 50,
+      history        : historyNums.length ? historyNums : null,
+      rounds         : 50,
+      poolSize       : poolSize,
       externalProbMap: prevProbMap,
       initialPool    : prevPool,
       onProgress: function(pct,stats){
@@ -542,18 +636,18 @@ async function runEngine(){
     });
 
     initTL(cfg.rounds||50);
-    tlog('엔진 가동 — rounds:'+cfg.rounds+', externalProbMap:'+(prevProbMap?'있음':'없음'),'ti');
+    tlog('엔진 가동 — rounds:'+cfg.rounds+' | poolSize:'+poolSize+' | history:'+(historyNums.length||'없음')+' | prevProbMap:'+(prevProbMap?'있음':'없음'),'ti');
 
     var result = await CubeEngine.generate(cfg);
 
-    // 3. 결과 처리
+    // 4. 결과 처리
     S.curMap = result.probMap;
     var nb=result.scores[0], diff=nb-S.prevBest;
     $('kpiBest').textContent=nb.toFixed(2);
     $('kpiBestDiff').innerHTML=diff>0?'<span class="up">▲ '+diff.toFixed(2)+' 향상</span>':
       diff<0?'<span class="dn">▼ '+Math.abs(diff).toFixed(2)+' 감소</span>':'<span class="eq">→ 유지</span>';
     S.prevBest=nb;
-    $('kpiPool').textContent=result.fullPool.length;
+    $('kpiPool').textContent=result.fullPool?result.fullPool.length:poolSize;
     $('kpiIter').textContent=prevIter+1; $('iterCount').textContent=prevIter+1;
     $('lastRun').textContent=new Date().toLocaleTimeString('ko-KR');
     $('lastSource').textContent='monitor';
@@ -561,11 +655,11 @@ async function runEngine(){
     renderHM(result.probMap); renderBar(result.probMap);
     renderCL(prevProbMap, result.probMap);
     renderCombos(result.results, result.scores);
-    if(cfg.history) renderStat(cfg.history);
+    if(historyNums.length) renderStat(historyNums.map(function(n,i){return {numbers:n};}));
 
     tlog('완료 — best:'+nb.toFixed(2)+' elapsed:'+result.meta.elapsed+'ms','ts');
 
-    // 4. 로또 웹과 동일 경로에 저장
+    // 5. 로또 웹과 동일 경로에 저장
     tlog('Firebase 저장 중 (lotto_history/shared_engine_state)...','ti');
     var savedIter = await saveSharedEngineState(result,'monitor');
     tlog('저장 완료 ✅ iteration:'+savedIter+' (로또 웹 공유)','ts');
@@ -615,6 +709,27 @@ $('btnReset').onclick = async function(){
 (async function(){
   tlog('초기 상태 확인 중...','ti');
   tlog('경로: '+SHARED_COL+'/'+SHARED_DOC,'ti');
+
+  // history 경로 사전 체크 (실제 로드는 실행 시)
+  try {
+    var hSnap = await db.collection('lotto_history').doc('lotto645_history').get();
+    var hEl = $('historyStatus');
+    if(hSnap.exists && hSnap.data().draws && hSnap.data().draws.length){
+      var cnt = hSnap.data().draws.length;
+      hEl.className='path-match';
+      hEl.textContent='✅ '+cnt+'회차 확인됨 (실행 시 로드)';
+      tlog('당첨 데이터 확인: '+cnt+'회차 (lotto645_history)','ts');
+    } else {
+      hEl.className='path-mismatch';
+      hEl.textContent='⚠️ 데이터 없음';
+      tlog('당첨 데이터: 없음 (CSV 업로드 필요)','tw');
+    }
+  } catch(e){
+    $('historyStatus').className='path-mismatch';
+    $('historyStatus').textContent='❌ 확인 실패';
+    tlog('당첨 데이터 확인 실패: '+e.message,'te');
+  }
+
   var data = await loadSharedEngineState();
   if(data){
     applyLoadedState(data);
