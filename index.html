@@ -1,172 +1,624 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CubeEngine v2.0.1 Dashboard</title>
-    <style>
-        :root { --primary: #03dac6; --bg: #121212; --card: #1e1e1e; }
-        body { font-family: 'Pretendard', sans-serif; background: var(--bg); color: #e0e0e0; margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
-        .card { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #333; }
-        .full { grid-column: 1 / -1; }
-        h2 { color: var(--primary); margin-top: 0; font-size: 1.2rem; border-left: 4px solid var(--primary); padding-left: 10px; }
-        .progress-container { background: #333; height: 8px; border-radius: 4px; margin: 15px 0; overflow: hidden; }
-        #progressFill { width: 0%; height: 100%; background: var(--primary); transition: width 0.2s; }
-        pre { background: #000; padding: 12px; border-radius: 8px; font-size: 11px; color: #00ff41; height: 150px; overflow-y: auto; border: 1px solid #222; }
-        button { width: 100%; background: #6200ee; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1rem; }
-        button:disabled { background: #444; opacity: 0.6; }
-        .stat-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
-        .stat-val { font-weight: bold; color: var(--primary); }
-        .diff-plus { color: #ff4d4d; } .diff-minus { color: #4d79ff; }
-        .log-box { height: 150px; font-family: monospace; font-size: 12px; overflow-y: auto; background: #000; padding: 10px; border-radius: 8px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CubeEngine v2.1.0 — 학습 상태 모니터</title>
+<style>
+:root {
+    --bg:      #0d0f14;
+    --card:    #161b25;
+    --border:  #232b3a;
+    --primary: #00d4ff;
+    --green:   #00e676;
+    --yellow:  #ffd740;
+    --red:     #ff5252;
+    --purple:  #ce93d8;
+    --text:    #cdd9e5;
+    --muted:   #637085;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Pretendard', 'Noto Sans KR', monospace; font-size: 13px; padding: 16px; }
+
+/* ── 헤더 ── */
+.header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding: 12px 18px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+.header h1 { font-size: 15px; color: var(--primary); letter-spacing: 1px; }
+.badge { background: #1a2a3a; color: var(--primary); font-size:11px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--primary); }
+#engineStatus { font-size:12px; color: var(--muted); }
+
+/* ── 그리드 ── */
+.grid  { display:grid; gap:12px; grid-template-columns: 1fr 1fr 1fr; }
+.grid2 { display:grid; gap:12px; grid-template-columns: 2fr 1fr; }
+.span2 { grid-column: span 2; }
+.span3 { grid-column: span 3; }
+
+/* ── 카드 ── */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display:flex; align-items:center; gap:6px; }
+.card-title .dot { width:7px; height:7px; border-radius:50%; background: var(--primary); display:inline-block; }
+
+/* ── KPI 숫자 ── */
+.kpi { font-size: 26px; font-weight: 700; color: var(--primary); line-height:1; }
+.kpi-label { font-size: 11px; color: var(--muted); margin-top:4px; }
+.kpi-row { display:flex; gap:20px; flex-wrap:wrap; }
+.kpi-item { flex:1; min-width:80px; }
+
+/* ── 진행바 ── */
+.prog-wrap { background: #1e2836; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.prog-fill  { height:100%; background: linear-gradient(90deg, #00d4ff, #00e676); border-radius:4px; transition: width .25s; }
+.prog-fill.active { animation: pulse-bar 1.2s infinite alternate; }
+@keyframes pulse-bar { from { opacity:.8; } to { opacity:1; } }
+
+/* ── 차트 캔버스 ── */
+canvas { width:100% !important; display:block; }
+
+/* ── 확률 히트맵 ── */
+#probGrid { display:grid; grid-template-columns: repeat(9,1fr); gap:3px; }
+.prob-cell { aspect-ratio:1; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; cursor:default; transition: opacity .3s; }
+.prob-cell:hover { transform: scale(1.15); z-index:10; position:relative; }
+
+/* ── 통계 바 ── */
+.stat-list { display:flex; flex-direction:column; gap:5px; }
+.stat-item { display:flex; align-items:center; gap:8px; }
+.stat-label { width:28px; text-align:right; color: var(--muted); font-size:11px; }
+.stat-bar-wrap { flex:1; background:#1e2836; height:6px; border-radius:3px; overflow:hidden; }
+.stat-bar { height:100%; border-radius:3px; transition: width .4s; }
+.stat-val { width:36px; text-align:right; font-size:11px; color: var(--text); }
+
+/* ── 결과 콤보 ── */
+.combo-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; align-items:center; }
+.ball { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0; }
+.b1  { background:#ffd740; color:#000; }
+.b10 { background:#00bcd4; color:#000; }
+.b20 { background:#f44336; color:#fff; }
+.b30 { background:#9c27b0; color:#fff; }
+.b40 { background:#4caf50; color:#fff; }
+.score-badge { font-size:11px; color: var(--yellow); margin-left:4px; }
+
+/* ── 상세 로그 ── */
+.log-box { height:130px; overflow-y:auto; font-family:monospace; font-size:11px; background:#080b10; border-radius:6px; padding:8px; }
+.log-box::-webkit-scrollbar { width:4px; } .log-box::-webkit-scrollbar-thumb { background:#333; }
+.log-line { padding:1px 0; border-bottom:1px solid #111; }
+.log-line.up   { color: var(--green); }
+.log-line.hold { color: var(--muted); }
+.log-line.err  { color: var(--red); }
+
+/* ── 실행 버튼 ── */
+.run-btn { width:100%; padding:14px; border:none; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; background: linear-gradient(135deg,#6200ea,#0091ea); color:#fff; letter-spacing:.5px; transition: opacity .2s; }
+.run-btn:disabled { opacity:.4; cursor:not-allowed; }
+.run-btn:not(:disabled):hover { opacity:.85; }
+
+/* ── 비교 테이블 ── */
+.cmp-table { width:100%; border-collapse:collapse; font-size:11px; }
+.cmp-table th { color: var(--muted); padding:4px 6px; text-align:left; border-bottom:1px solid var(--border); }
+.cmp-table td { padding:4px 6px; border-bottom:1px solid #1a1f2e; }
+.up   { color: var(--green); }
+.down { color: var(--red); }
+.same { color: var(--muted); }
+
+/* ── 탭 ── */
+.tabs { display:flex; gap:2px; margin-bottom:10px; }
+.tab { padding:5px 12px; border-radius:5px; font-size:11px; cursor:pointer; background:#1a1f2e; color:var(--muted); border:1px solid var(--border); }
+.tab.active { background: var(--primary); color:#000; font-weight:700; }
+
+/* ── 반응형 ── */
+@media(max-width:900px) { .grid,.grid2 { grid-template-columns:1fr 1fr; } .span3 { grid-column:span 2; } }
+@media(max-width:600px) { .grid,.grid2 { grid-template-columns:1fr; } .span2,.span3 { grid-column:span 1; } }
+</style>
 </head>
 <body>
 
-<div class="grid">
-    <div class="card full">
-        <h2>CubeEngine 제어 센터 (v2.0.1)</h2>
-        <div class="stat-row">
-            <span>엔진 상태: <span id="statusText">준비 완료</span></span>
-            <span>누적 학습(Iteration): <span id="iterCount" class="stat-val">0</span></span>
-        </div>
-        <div class="progress-container"><div id="progressFill"></div></div>
-        <button id="runBtn">학습 및 진화 시작 (데이터 로드 포함)</button>
+<!-- ── 헤더 ── -->
+<div class="header">
+    <h1>⬡ CubeEngine <span class="badge">v2.1.0</span></h1>
+    <span id="engineStatus">대기 중</span>
+    <span id="iterBadge" class="badge">Iter: 0</span>
+</div>
+
+<!-- ── 실행 버튼 + 진행 ── -->
+<div class="card" style="margin-bottom:12px;">
+    <div class="kpi-row" style="margin-bottom:10px;">
+        <div class="kpi-item"><div class="kpi" id="kpiRound">0<span style="font-size:14px;color:var(--muted)">/50</span></div><div class="kpi-label">라운드</div></div>
+        <div class="kpi-item"><div class="kpi" id="kpiBest">-</div><div class="kpi-label">최고 점수</div></div>
+        <div class="kpi-item"><div class="kpi" id="kpiPool">-</div><div class="kpi-label">후보 풀</div></div>
+        <div class="kpi-item"><div class="kpi" id="kpiElapsed">0s</div><div class="kpi-label">경과시간</div></div>
+        <div class="kpi-item"><div class="kpi" id="kpiImprove" style="font-size:18px;">-</div><div class="kpi-label">학습상태</div></div>
+    </div>
+    <div class="prog-wrap"><div id="progFill" class="prog-fill" style="width:0%"></div></div>
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:10px;">
+        <span id="progPhase">-</span><span id="progPct">0%</span>
+    </div>
+    <button class="run-btn" id="runBtn">▶ 학습 및 진화 시작 (Firebase 연동)</button>
+</div>
+
+<!-- ── 메인 그리드 ── -->
+<div class="grid" style="margin-bottom:12px;">
+
+    <!-- ① 점수 추이 차트 -->
+    <div class="card span2">
+        <div class="card-title"><span class="dot" style="background:var(--green)"></span>라운드별 최고 점수 추이</div>
+        <canvas id="scoreChart" height="100"></canvas>
     </div>
 
+    <!-- ② 수렴 지표 -->
     <div class="card">
-        <h2>1. 데이터 로드 (Firebase)</h2>
-        <div class="stat-row"><span>불러온 Pool 수:</span> <span id="loadPoolSize" class="stat-val">0</span></div>
-        <pre id="loadRaw">로드된 데이터가 여기에 표시됩니다.</pre>
-    </div>
-
-    <div class="card">
-        <h2>2. 학습 변화 분석 (ProbMap)</h2>
-        <div class="stat-row"><span>변화된 번호 수:</span> <span id="changedCount" class="stat-val">0</span>개</div>
-        <div id="changeLog" class="log-box">대기 중...</div>
-    </div>
-
-    <div class="card full">
-        <h2>3. 최종 결과 및 저장 상태</h2>
-        <div class="stat-row">
-            <span>추천 조합: <span id="bestCombo" class="stat-val">대기 중</span></span>
-            <span>저장 결과: <span id="saveStatus" class="stat-val">-</span></span>
+        <div class="card-title"><span class="dot" style="background:var(--yellow)"></span>학습 수렴 지표</div>
+        <div class="stat-list" id="convergeStat">
+            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
         </div>
-        <pre id="finalOutput">최종 결과 데이터가 표시됩니다.</pre>
     </div>
 </div>
 
-<!-- 1) 엔진 먼저 로드 -->
-<script src="cube-engine.js"></script>
+<div class="grid2" style="margin-bottom:12px;">
 
-<!-- 2) Firebase SDK (ESM → compat 버전으로 변경하여 type=module 불필요) -->
+    <!-- ③ 확률 히트맵 -->
+    <div class="card">
+        <div class="card-title"><span class="dot"></span>번호 확률 히트맵 (ML + 통계 블렌딩)</div>
+        <div id="probGrid"></div>
+        <div style="display:flex; gap:12px; margin-top:8px; font-size:10px; color:var(--muted);">
+            <span>■ <span style="color:#0d47a1">낮음</span></span>
+            <span>■ <span style="color:#1565c0">중간</span></span>
+            <span>■ <span style="color:#00d4ff">높음</span></span>
+            <span>■ <span style="color:#00e676">최고</span></span>
+        </div>
+    </div>
+
+    <!-- ④ StatCache 탭 패널 -->
+    <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--purple)"></span>StatCache 분석</div>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('freq')">빈도</div>
+            <div class="tab" onclick="switchTab('recent')">최근</div>
+            <div class="tab" onclick="switchTab('gap')">간격</div>
+            <div class="tab" onclick="switchTab('rehit')">재출현</div>
+        </div>
+        <div id="statBars" class="stat-list">
+            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
+        </div>
+    </div>
+</div>
+
+<div class="grid" style="margin-bottom:12px;">
+
+    <!-- ⑤ 추천 결과 -->
+    <div class="card span2">
+        <div class="card-title"><span class="dot" style="background:var(--green)"></span>최종 추천 조합</div>
+        <div id="resultCombos"><div style="color:var(--muted);">완료 후 표시됩니다</div></div>
+    </div>
+
+    <!-- ⑥ 저장 상태 -->
+    <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--yellow)"></span>Firebase 상태</div>
+        <div id="fbStatus" class="stat-list" style="font-size:12px;">
+            <div style="color:var(--muted);">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- ⑦ probMap 변화 비교 + 라운드 로그 -->
+<div class="grid2">
+    <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--red)"></span>ProbMap 변화 (이전 → 현재)</div>
+        <div id="probDiffTable" style="max-height:180px;overflow-y:auto;">
+            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title"><span class="dot"></span>라운드 로그</div>
+        <div id="roundLog" class="log-box"></div>
+    </div>
+</div>
+
+<!-- ── Firebase SDK ── -->
+<script src="cube-engine.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-<!-- 3) 메인 로직 (일반 스크립트 - CubeEngine 바로 접근 가능) -->
 <script>
-    var firebaseConfig = {
-        apiKey: "AIzaSyB4S8qkK07QYXq5yw0Coo69sZBIk0uew2E",
-        authDomain: "randextraccube-engine.firebaseapp.com",
-        projectId: "randextraccube-engine",
-        storageBucket: "randextraccube-engine.firebasestorage.app",
-        messagingSenderId: "515597545439",
-        appId: "1:515597545439:web:f1e804554406719a3cde6a"
-    };
+/* ══════════════════════════════════════
+   Firebase 초기화
+══════════════════════════════════════ */
+var firebaseConfig = {
+    apiKey: "AIzaSyB4S8qkK07QYXq5yw0Coo69sZBIk0uew2E",
+    authDomain: "randextraccube-engine.firebaseapp.com",
+    projectId: "randextraccube-engine",
+    storageBucket: "randextraccube-engine.firebasestorage.app",
+    messagingSenderId: "515597545439",
+    appId: "1:515597545439:web:f1e804554406719a3cde6a"
+};
+firebase.initializeApp(firebaseConfig);
+var db     = firebase.firestore();
+var DOC    = db.collection("CubeEngine").doc("main_engine_data");
 
-    firebase.initializeApp(firebaseConfig);
-    var db = firebase.firestore();
-    var DOC_REF = db.collection("CubeEngine").doc("main_engine_data");
+/* ══════════════════════════════════════
+   유틸
+══════════════════════════════════════ */
+var $ = function(id) { return document.getElementById(id); };
 
-    var el = function(id) { return document.getElementById(id); };
+/* ══════════════════════════════════════
+   차트 (Canvas — 의존성 없음)
+══════════════════════════════════════ */
+var scoreData = [];
 
-    // 학습 변화 분석
-    function analyzeLearning(oldMap, newMap) {
-        var html = "";
-        var changed = 0;
-        if (!newMap) return;
-        for (var i = 1; i <= 45; i++) {
-            var oldP = oldMap ? (oldMap[i] || 0) : 0;
-            var newP = newMap[i] || 0;
-            var diff = newP - oldP;
-            if (Math.abs(diff) > 0.0001) {
-                var icon = diff > 0 ? "▲" : "▼";
-                var cls  = diff > 0 ? "diff-plus" : "diff-minus";
-                html += '<div>No.' + i + ': ' + oldP.toFixed(4) + ' → <b>' + newP.toFixed(4) + '</b> <span class="' + cls + '">' + icon + ' ' + Math.abs(diff).toFixed(4) + '</span></div>';
-                changed++;
-            }
-        }
-        el('changeLog').innerHTML = html || "변화 없음 (첫 실행)";
-        el('changedCount').innerText = changed;
+function drawScoreChart() {
+    var canvas = $('scoreChart');
+    var W = canvas.offsetWidth || 400;
+    canvas.width  = W * window.devicePixelRatio;
+    canvas.height = 100 * window.devicePixelRatio;
+    var ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.clearRect(0, 0, W, 100);
+
+    if (scoreData.length < 2) {
+        ctx.fillStyle = '#637085'; ctx.font='11px monospace'; ctx.textAlign='center';
+        ctx.fillText('데이터 대기 중...', W/2, 50); return;
     }
 
-    el('runBtn').onclick = async function() {
-        var btn = el('runBtn');
-        btn.disabled = true;
-        el('statusText').innerText = "1단계: 데이터 로드 중...";
-        el('saveStatus').innerText = "-";
+    var min = Math.min(...scoreData) * 0.98;
+    var max = Math.max(...scoreData) * 1.02;
+    var pad = { l:30, r:10, t:10, b:20 };
+    var cw = W - pad.l - pad.r;
+    var ch = 100 - pad.t - pad.b;
 
-        try {
-            // [1] 데이터 로드
-            var prevData = null;
-            var snap = await DOC_REF.get();
-            if (snap.exists) {
-                prevData = snap.data();
-                if (prevData.pool) {
-                    prevData.pool = prevData.pool.map(function(p) { return p.items; });
-                }
-                el('loadPoolSize').innerText = prevData.pool ? prevData.pool.length : 0;
-                el('iterCount').innerText = prevData.iteration || 0;
-                el('loadRaw').innerText = JSON.stringify(prevData.probMap, null, 2);
-            } else {
-                el('loadRaw').innerText = "저장된 데이터 없음: 신규 학습 시작";
-            }
+    // 그리드
+    ctx.strokeStyle = '#1e2836'; ctx.lineWidth = 1;
+    for (var g=0; g<=4; g++) {
+        var y = pad.t + ch * g/4;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+cw, y); ctx.stroke();
+        var val = max - (max-min)*g/4;
+        ctx.fillStyle='#637085'; ctx.font='9px monospace'; ctx.textAlign='right';
+        ctx.fillText(val.toFixed(1), pad.l-4, y+3);
+    }
 
-            // [2] 엔진 가동
-            el('statusText').innerText = "2단계: 하이브리드 진화 중...";
-            var result = await CubeEngine.generate({
-                ...CubeEngine.presets.lotto645,
-                rounds: 30,
-                externalProbMap: prevData ? prevData.probMap : null,
-                initialPool: prevData ? prevData.pool : null,
-                onProgress: function(pct) {
-                    el('progressFill').style.width = pct + "%";
-                }
-            });
+    // 라인
+    ctx.beginPath(); ctx.strokeStyle='#00e676'; ctx.lineWidth=2; ctx.lineJoin='round';
+    scoreData.forEach(function(v, i) {
+        var x = pad.l + cw * i / (scoreData.length - 1);
+        var y = pad.t + ch * (1 - (v - min)/(max - min || 1));
+        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
 
-            // [3] 학습 변화 분석
-            analyzeLearning(prevData ? prevData.probMap : null, result.probMap);
+    // 그라디언트 fill
+    var grad = ctx.createLinearGradient(0, pad.t, 0, pad.t+ch);
+    grad.addColorStop(0, 'rgba(0,230,118,.25)');
+    grad.addColorStop(1, 'rgba(0,230,118,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    scoreData.forEach(function(v, i) {
+        var x = pad.l + cw * i / (scoreData.length - 1);
+        var y = pad.t + ch * (1 - (v - min)/(max - min || 1));
+        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.lineTo(pad.l+cw, pad.t+ch); ctx.lineTo(pad.l, pad.t+ch); ctx.closePath();
+    ctx.fill();
 
-            // [4] 저장
-            el('statusText').innerText = "3단계: 결과 저장 중...";
-            var formattedPool = result.fullPool.slice(0, 100).map(function(combo) {
-                return { items: combo };
-            });
+    // 최신점 표시
+    var last = scoreData[scoreData.length-1];
+    var lx   = pad.l + cw;
+    var ly   = pad.t + ch * (1 - (last - min)/(max - min || 1));
+    ctx.beginPath(); ctx.arc(lx,ly,4,0,Math.PI*2);
+    ctx.fillStyle='#00e676'; ctx.fill();
+}
 
-            await DOC_REF.set({
-                probMap: result.probMap,
-                pool: formattedPool,
-                iteration: ((prevData ? prevData.iteration : 0) || 0) + 1,
-                generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                bestScore: result.scores[0]
-            });
+/* ══════════════════════════════════════
+   확률 히트맵
+══════════════════════════════════════ */
+function renderProbGrid(probMap) {
+    var grid  = $('probGrid');
+    grid.innerHTML = '';
+    var vals  = Object.values(probMap);
+    var max   = Math.max(...vals);
+    var min   = Math.min(...vals);
+    for (var n=1; n<=45; n++) {
+        var p    = probMap[n] || 0;
+        var norm = (p - min) / (max - min + 0.0001);
+        var r,g,b;
+        if (norm < 0.33)      { r=13+(norm/0.33)*25;    g=71+(norm/0.33)*20;  b=161+(norm/0.33)*30; }
+        else if (norm < 0.66) { var t=(norm-0.33)/0.33; r=38+t*0;   g=91+t*(212-91);  b=191+(t*(255-191)); }
+        else                  { var t=(norm-0.66)/0.34; r=0+t*0;    g=212+t*(230-212); b=255-(t*(255-118)); }
+        var bg   = 'rgb('+Math.round(r)+','+Math.round(g)+','+Math.round(b)+')';
+        var text = norm > 0.6 ? '#000' : '#fff';
+        var cell = document.createElement('div');
+        cell.className   = 'prob-cell';
+        cell.style.background = bg;
+        cell.style.color      = text;
+        cell.title = 'No.'+n+': '+(p*100).toFixed(2)+'%';
+        cell.textContent = n;
+        grid.appendChild(cell);
+    }
+}
 
-            // [5] 결과 표시
-            el('saveStatus').innerText = "성공";
-            el('bestCombo').innerText = result.results[0].join(", ");
-            el('finalOutput').innerText = JSON.stringify(result.results, null, 2);
-            el('statusText').innerText = "모든 작업 완료!";
-            el('iterCount').innerText = ((prevData ? prevData.iteration : 0) || 0) + 1;
+/* ══════════════════════════════════════
+   StatCache 바 차트 (탭별)
+══════════════════════════════════════ */
+var currentTab = 'freq';
+var latestStat = null;
 
-        } catch(err) {
-            console.error(err);
-            el('statusText').innerText = "오류: " + err.message;
-        } finally {
-            btn.disabled = false;
-        }
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+    event.target.classList.add('active');
+    if (latestStat) renderStatBars(latestStat, tab);
+}
+
+function renderStatBars(stat, tab) {
+    latestStat = stat;
+    var key    = tab === 'freq' ? 'freq' : tab === 'recent' ? 'recentFreq' : tab === 'gap' ? 'gap' : 'reHit';
+    var data   = stat[key];
+    var colors = { freq:'#00d4ff', recentFreq:'#00e676', gap:'#ffd740', reHit:'#ce93d8' };
+    var color  = colors[key] || '#00d4ff';
+
+    var entries = Object.keys(data).map(function(k){ return {n:+k, v:data[k]}; });
+    entries.sort(function(a,b){ return b.v - a.v; });
+    var top = entries.slice(0, 15);
+    var maxV = top[0] ? top[0].v : 1;
+
+    var html = '';
+    top.forEach(function(e) {
+        var pct = maxV > 0 ? (e.v / maxV * 100).toFixed(0) : 0;
+        html += '<div class="stat-item">'
+              + '<span class="stat-label">'+e.n+'</span>'
+              + '<div class="stat-bar-wrap"><div class="stat-bar" style="width:'+pct+'%;background:'+color+'"></div></div>'
+              + '<span class="stat-val">'+e.v+'</span></div>';
+    });
+    $('statBars').innerHTML = html || '<div style="color:var(--muted)">데이터 없음</div>';
+}
+
+/* ══════════════════════════════════════
+   ProbMap 비교 테이블
+══════════════════════════════════════ */
+function renderProbDiff(oldMap, newMap) {
+    if (!newMap) return;
+    var rows = [];
+    for (var i=1; i<=45; i++) {
+        var ov = oldMap ? (oldMap[i] || 0) : 0;
+        var nv = newMap[i] || 0;
+        var d  = nv - ov;
+        if (Math.abs(d) > 0.0001) rows.push({n:i, old:ov, nw:nv, d:d});
+    }
+    rows.sort(function(a,b){ return Math.abs(b.d)-Math.abs(a.d); });
+
+    var html = '<table class="cmp-table"><thead><tr><th>번호</th><th>이전</th><th>현재</th><th>변화</th></tr></thead><tbody>';
+    rows.slice(0,20).forEach(function(r) {
+        var cls = r.d>0 ? 'up' : 'down';
+        var icon = r.d>0 ? '▲' : '▼';
+        html += '<tr><td>No.'+r.n+'</td><td class="same">'+r.old.toFixed(4)+'</td>'
+              + '<td>'+r.nw.toFixed(4)+'</td>'
+              + '<td class="'+cls+'">'+icon+' '+Math.abs(r.d).toFixed(4)+'</td></tr>';
+    });
+    html += '</tbody></table>';
+    $('probDiffTable').innerHTML = rows.length ? html : '<div style="color:var(--muted);font-size:11px;">변화 없음</div>';
+}
+
+/* ══════════════════════════════════════
+   결과 조합 렌더링
+══════════════════════════════════════ */
+function ballColor(n) {
+    if (n < 10)  return 'b1';
+    if (n < 20)  return 'b10';
+    if (n < 30)  return 'b20';
+    if (n < 40)  return 'b30';
+    return 'b40';
+}
+
+function renderCombos(results, scores) {
+    var html = '';
+    results.forEach(function(combo, i) {
+        html += '<div class="combo-row">';
+        combo.forEach(function(n) {
+            html += '<div class="ball '+ballColor(n)+'">'+n+'</div>';
+        });
+        html += '<span class="score-badge">'+scores[i]+'점</span></div>';
+    });
+    $('resultCombos').innerHTML = html;
+}
+
+/* ══════════════════════════════════════
+   수렴 지표
+══════════════════════════════════════ */
+function renderConverge(scoreHistory) {
+    if (!scoreHistory || scoreHistory.length < 2) return;
+    var first = scoreHistory[0];
+    var last  = scoreHistory[scoreHistory.length-1];
+    var delta = last - first;
+    var improvements = scoreHistory.filter(function(v,i){ return i>0 && v > scoreHistory[i-1]; }).length;
+    var convRate = (improvements / (scoreHistory.length-1) * 100).toFixed(0);
+
+    var items = [
+        { label:'시작 점수',  val: first.toFixed(2),   bar:50, color:'#637085' },
+        { label:'최종 점수',  val: last.toFixed(2),    bar:Math.min(last/first*50,100), color:'#00e676' },
+        { label:'총 향상',    val: (delta>0?'+':'')+delta.toFixed(2), bar:Math.min(delta/last*100,100), color:'#ffd740' },
+        { label:'향상 라운드', val: improvements+'/'+( scoreHistory.length-1), bar:+convRate, color:'#00d4ff' },
+    ];
+
+    var html = '';
+    items.forEach(function(item) {
+        html += '<div class="stat-item">'
+              + '<span style="width:70px;font-size:10px;color:var(--muted)">'+item.label+'</span>'
+              + '<div class="stat-bar-wrap"><div class="stat-bar" style="width:'+Math.max(0,item.bar)+'%;background:'+item.color+'"></div></div>'
+              + '<span class="stat-val" style="color:'+item.color+'">'+item.val+'</span></div>';
+    });
+    $('convergeStat').innerHTML = html;
+}
+
+/* ══════════════════════════════════════
+   로그 추가
+══════════════════════════════════════ */
+function addLog(msg, type) {
+    var box = $('roundLog');
+    var div = document.createElement('div');
+    div.className = 'log-line ' + (type||'hold');
+    div.textContent = new Date().toLocaleTimeString('ko-KR',{hour12:false}) + ' ' + msg;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+}
+
+/* ══════════════════════════════════════
+   Firebase 상태 패널
+══════════════════════════════════════ */
+function renderFbStatus(data) {
+    var html = '';
+    if (!data) { $('fbStatus').innerHTML='<div style="color:var(--muted)">저장된 데이터 없음</div>'; return; }
+    var items = [
+        { k:'Iteration',    v: data.iteration || 0 },
+        { k:'Pool 크기',    v: data.pool ? data.pool.length : 0 },
+        { k:'최고 점수',    v: data.bestScore ? data.bestScore.toFixed(2) : '-' },
+        { k:'저장 시각',    v: data.generatedAt ? (data.generatedAt.toDate ? data.generatedAt.toDate().toLocaleString('ko-KR') : data.generatedAt) : '-' },
+    ];
+    items.forEach(function(i) {
+        html += '<div class="stat-item"><span style="flex:1;color:var(--muted)">'+i.k+'</span>'
+              + '<span style="color:var(--primary);font-weight:700">'+i.v+'</span></div>';
+    });
+    $('fbStatus').innerHTML = html;
+}
+
+/* ══════════════════════════════════════
+   메인 실행
+══════════════════════════════════════ */
+$('runBtn').onclick = async function() {
+    var btn = $('runBtn');
+    btn.disabled = true;
+    scoreData = [];
+    $('roundLog').innerHTML = '';
+    $('probGrid').innerHTML = '';
+    $('resultCombos').innerHTML = '<div style="color:var(--muted)">진행 중...</div>';
+
+    var $fill  = $('progFill');
+    $fill.classList.add('active');
+
+    var setStatus = function(msg) {
+        $('engineStatus').textContent = msg;
+        addLog(msg);
     };
-</script>
 
+    try {
+        /* [1] Firebase 로드 */
+        setStatus('⬇ Firebase 데이터 로드 중...');
+        var prevData   = null;
+        var snap       = await DOC.get();
+        if (snap.exists) {
+            prevData = snap.data();
+            if (prevData.pool) prevData.pool = prevData.pool.map(function(p){ return p.items; });
+            $('iterBadge').textContent = 'Iter: ' + (prevData.iteration || 0);
+            renderFbStatus(prevData);
+            addLog('✓ 로드 완료 — pool:' + (prevData.pool ? prevData.pool.length : 0) + '개', 'up');
+        } else {
+            addLog('신규 세션 — 저장 데이터 없음', 'hold');
+            renderFbStatus(null);
+        }
+
+        var prevProbMap = prevData ? prevData.probMap : null;
+
+        /* [2] 엔진 실행 */
+        setStatus('⚙ 하이브리드 진화 중...');
+        var result = await CubeEngine.generate({
+            items  : 45,
+            pick   : 6,
+            rounds : 50,
+            poolSize: 2500,
+            externalProbMap: prevData ? prevData.probMap : null,
+            initialPool    : prevData ? prevData.pool    : null,
+
+            onProgress: function(pct, stats) {
+                $fill.style.width = pct + '%';
+                $('progPct').textContent  = pct + '%';
+                $('progPhase').textContent = stats.message || stats.phase || '';
+
+                if (stats.phase === 'ml_done' && stats.statCache) {
+                    renderStatBars(stats.statCache, currentTab);
+                    addLog('✓ StatCache 구성 완료', 'up');
+                }
+
+                if (stats.phase === 'evolving') {
+                    $('kpiRound').innerHTML   = stats.round + '<span style="font-size:14px;color:var(--muted)">/'+stats.totalRounds+'</span>';
+                    $('kpiBest').textContent  = stats.bestScore ? stats.bestScore.toFixed(1) : '-';
+                    $('kpiPool').textContent  = stats.poolSize || '-';
+                    $('kpiElapsed').textContent = stats.elapsed ? (stats.elapsed/1000).toFixed(1)+'s' : '-';
+                    $('kpiImprove').textContent = stats.improvement || '-';
+
+                    if (stats.scoreHistory && stats.scoreHistory.length) {
+                        scoreData = stats.scoreHistory;
+                        drawScoreChart();
+                        renderConverge(scoreData);
+                    }
+
+                    if (stats.probMap) {
+                        renderProbGrid(stats.probMap);
+                        if (stats.round % 5 === 0) {
+                            renderProbDiff(prevProbMap, stats.probMap);
+                        }
+                    }
+
+                    var isUp = stats.improvement && stats.improvement.indexOf('향상') >= 0;
+                    if (isUp) addLog('R'+stats.round+' ▲ '+stats.bestScore.toFixed(2), 'up');
+                    else if (stats.round % 10 === 0) addLog('R'+stats.round+' → '+stats.bestScore.toFixed(2), 'hold');
+                }
+            },
+
+            onRound: function(rn, best) {
+                // onProgress에서 처리
+            }
+        });
+
+        /* [3] 최종 렌더링 */
+        renderProbGrid(result.probMap);
+        renderProbDiff(prevProbMap, result.probMap);
+        renderCombos(result.results, result.scores);
+        renderConverge(result.scoreHistory);
+        if (result.stat) renderStatBars(result.stat, currentTab);
+        scoreData = result.scoreHistory;
+        drawScoreChart();
+
+        $('kpiBest').textContent = result.scores[0] ? result.scores[0].toFixed(1) : '-';
+        $('kpiElapsed').textContent = (result.meta.elapsed/1000).toFixed(1)+'s';
+        $('kpiImprove').textContent = '✅ 완료';
+
+        addLog('✅ 진화 완료 — '+result.meta.elapsed+'ms / 후보:'+result.fullPool.length+'개', 'up');
+
+        /* [4] Firebase 저장 */
+        setStatus('⬆ Firebase 저장 중...');
+        var formatted = result.fullPool.slice(0,100).map(function(c){ return {items:c}; });
+        await DOC.set({
+            probMap    : result.probMap,
+            pool       : formatted,
+            iteration  : ((prevData ? prevData.iteration : 0) || 0) + 1,
+            generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            bestScore  : result.scores[0] || 0
+        });
+        var newIter = ((prevData ? prevData.iteration : 0) || 0) + 1;
+        $('iterBadge').textContent = 'Iter: ' + newIter;
+        renderFbStatus({ iteration: newIter, pool: formatted, bestScore: result.scores[0], generatedAt: new Date() });
+        addLog('✅ Firebase 저장 완료 — Iter '+newIter, 'up');
+        setStatus('✅ 모든 작업 완료');
+
+    } catch(err) {
+        console.error(err);
+        addLog('❌ 오류: ' + err.message, 'err');
+        setStatus('❌ 오류 발생');
+    } finally {
+        btn.disabled = false;
+        $fill.classList.remove('active');
+    }
+};
+
+/* ══════════════════════════════════════
+   초기 히트맵 (빈 상태)
+══════════════════════════════════════ */
+(function initGrid() {
+    var g = $('probGrid');
+    for (var i=1;i<=45;i++) {
+        var c = document.createElement('div');
+        c.className='prob-cell';
+        c.style.background='#1e2836';
+        c.style.color='#637085';
+        c.textContent=i;
+        g.appendChild(c);
+    }
+    drawScoreChart();
+})();
+
+window.addEventListener('resize', drawScoreChart);
+</script>
 </body>
 </html>

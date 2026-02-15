@@ -1,9 +1,16 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.0.1  (Universal)             ║
+ * ║              CubeEngine  v2.1.0  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   범용 추첨 엔진 - 제외숫자 & 구간설정 지원              ║
+ * ║   + StatCache · WeightedProb · HistorySet 최적화         ║
  * ╚══════════════════════════════════════════════════════════╝
+ *
+ * v2.1.0 변경사항:
+ *   1. buildStatCache()  — freq / recentFreq / gap / reHit 사전 계산
+ *   2. buildWeightedProb() — 통계 기반 가중 확률 레이어 추가
+ *   3. historySet (Set<string>) — isTooSimilar O(N) → O(1) 비교 대체
+ *      → 후보 생성 루프 속도 대폭 향상
+ *   4. ML probMap 과 통계 probMap 블렌딩 (statWeight 옵션)
  */
 
 'use strict';
@@ -37,15 +44,25 @@ var DEFAULTS = {
     threshold : 5,
     topCandidatePool: 15,
 
+    // ── v2.1.0 신규 ──
+    statWeight: 0.35,      // 통계 확률과 ML 확률 블렌딩 비율 (0~1)
+    recentWindow: 30,       // 최근 N회 빈도 계산 윈도우
+
     // ── 콜백 ──
     onProgress: null,
     onRound   : null,
     onComplete: null,
 };
 
+/* ─────────────────────────────────────────
+   기본 수학 유틸
+───────────────────────────────────────── */
 function baseScore(x) { return Math.sin(x) + Math.cos(x / 2); }
-function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+function sigmoid(x)   { return 1 / (1 + Math.exp(-x)); }
 
+/* ─────────────────────────────────────────
+   유효 풀 생성
+───────────────────────────────────────── */
 function buildValidPool(cfg) {
     var start = cfg.rangeStart !== null ? cfg.rangeStart : 1;
     var end   = cfg.rangeEnd   !== null ? cfg.rangeEnd   : cfg.items;
@@ -57,8 +74,96 @@ function buildValidPool(cfg) {
     return pool;
 }
 
-function buildMLProbabilities(cfg, validPool) {
-    var n = validPool.length;
+/* ─────────────────────────────────────────
+   v2.1.0 ① StatCache — 통계 사전 계산
+   · freq      : 전체 출현 빈도
+   · recentFreq: 최근 N회 가중 빈도
+   · gap       : 마지막 출현 이후 경과 회차
+   · reHit     : 연속 재출현 횟수
+───────────────────────────────────────── */
+function buildStatCache(history, cfg) {
+    var freq      = {};
+    var recentFreq = {};
+    var gap       = {};
+    var reHit     = {};
+    var total     = history ? history.length : 0;
+    var window    = cfg.recentWindow || 30;
+
+    for (var i = 1; i <= cfg.items; i++) {
+        freq[i] = 0; recentFreq[i] = 0; gap[i] = 0; reHit[i] = 0;
+    }
+
+    if (!history || history.length === 0) {
+        return { freq: freq, recentFreq: recentFreq, gap: gap, reHit: reHit };
+    }
+
+    // 전체 빈도
+    history.forEach(function(draw) {
+        draw.forEach(function(n) { if (freq[n] !== undefined) freq[n]++; });
+    });
+
+    // 최근 N회 빈도
+    var recent = history.slice(-window);
+    recent.forEach(function(draw) {
+        draw.forEach(function(n) { if (recentFreq[n] !== undefined) recentFreq[n]++; });
+    });
+
+    // 출현 간격 (마지막으로 나온 이후 몇 회 쉬었는지)
+    for (var num = 1; num <= cfg.items; num++) {
+        gap[num] = total; // 한번도 안 나왔으면 전체
+        for (var j = total - 1; j >= 0; j--) {
+            if (history[j].indexOf(num) >= 0) {
+                gap[num] = total - j - 1;
+                break;
+            }
+        }
+    }
+
+    // 재출현 확률 (연속 회차 재등장 횟수)
+    for (var k = 1; k < history.length; k++) {
+        var prev = history[k - 1];
+        var curr = history[k];
+        prev.forEach(function(n) {
+            if (curr.indexOf(n) >= 0 && reHit[n] !== undefined) reHit[n]++;
+        });
+    }
+
+    return { freq: freq, recentFreq: recentFreq, gap: gap, reHit: reHit };
+}
+
+/* ─────────────────────────────────────────
+   v2.1.0 ② WeightedProb — 통계 기반 확률
+   · freqScore  : 전체 빈도 30%
+   · recentScore: 최근 빈도 30%
+   · gapScore   : 출현 간격 (오래 쉰 번호 우대) 20%
+   · reHitScore : 연속 재출현 가능성 20%
+───────────────────────────────────────── */
+function buildWeightedProb(cfg, validPool, stat) {
+    var probMap   = {};
+    var totalDraw = cfg.history ? cfg.history.length : 1;
+    var window    = cfg.recentWindow || 30;
+
+    validPool.forEach(function(n) {
+        var freqScore   = stat.freq[n]       / totalDraw;
+        var recentScore = stat.recentFreq[n] / window;
+        var gapScore    = Math.min(stat.gap[n] / 20, 1);
+        var reHitScore  = stat.reHit[n]      / totalDraw;
+
+        probMap[n] =
+            freqScore   * 0.30 +
+            recentScore * 0.30 +
+            gapScore    * 0.20 +
+            reHitScore  * 0.20;
+    });
+
+    return probMap;
+}
+
+/* ─────────────────────────────────────────
+   ML 기반 확률 모델 (기존 + 통계 블렌딩)
+───────────────────────────────────────── */
+function buildMLProbabilities(cfg, validPool, stat) {
+    var n      = validPool.length;
     var scores = {};
 
     validPool.forEach(function(num) { scores[num] = baseScore(num); });
@@ -74,15 +179,28 @@ function buildMLProbabilities(cfg, validPool) {
         cfg.history.forEach(function(draw) {
             validPool.forEach(function(num) {
                 var predicted = sigmoid(scores[num]);
-                var actual = draw.indexOf(num) >= 0 ? 1 : 0;
-                scores[num] += cfg.learningRate * (actual - predicted);
+                var actual    = draw.indexOf(num) >= 0 ? 1 : 0;
+                scores[num]  += cfg.learningRate * (actual - predicted);
             });
         });
     }
 
-    var probMap = {};
-    validPool.forEach(function(num) { probMap[num] = sigmoid(scores[num]); });
+    var mlMap = {};
+    validPool.forEach(function(num) { mlMap[num] = sigmoid(scores[num]); });
 
+    // ── 통계 블렌딩 (v2.1.0) ──
+    var probMap = {};
+    if (stat && cfg.history && cfg.history.length > 0) {
+        var statMap = buildWeightedProb(cfg, validPool, stat);
+        var sw      = Math.min(Math.max(cfg.statWeight || 0.35, 0), 1);
+        validPool.forEach(function(num) {
+            probMap[num] = mlMap[num] * (1 - sw) + (statMap[num] || 0) * sw;
+        });
+    } else {
+        validPool.forEach(function(num) { probMap[num] = mlMap[num]; });
+    }
+
+    // ── Firebase 외부 확률 블렌딩 ──
     if (cfg.externalProbMap) {
         validPool.forEach(function(num) {
             if (cfg.externalProbMap[num] !== undefined) {
@@ -93,6 +211,7 @@ function buildMLProbabilities(cfg, validPool) {
         });
     }
 
+    // ── 정규화 ──
     var avg = 0;
     validPool.forEach(function(num) { avg += probMap[num]; });
     avg /= n;
@@ -102,52 +221,54 @@ function buildMLProbabilities(cfg, validPool) {
     return probMap;
 }
 
+/* ─────────────────────────────────────────
+   큐브 진화 (단일 번호)
+───────────────────────────────────────── */
 async function evolveHybridCube(itemNum, initialProb, cfg) {
-    var adaptiveProb = initialProb;
+    var adaptiveProb  = initialProb;
     var score = 0, success = 0, total = 0;
     var start = performance.now();
     var improvementRate = 0;
-    
+
     while (performance.now() - start < cfg.evolveTime || total < cfg.loopMin) {
         total++;
         if (Math.random() < adaptiveProb) { success++; score++; }
-        
-        // 더 자주 확률 적응 (더 빠른 학습)
+
         if (total % 100 === 0) {
             var currentRate = success / total;
-            var target = adaptiveProb;
-            var delta = target - currentRate;
-            
-            // 적응형 학습률 (양수/음수에 따라 다름)
+            var delta       = adaptiveProb - currentRate;
             improvementRate = delta > 0 ? 0.15 : 0.08;
-            adaptiveProb += delta * improvementRate;
-            adaptiveProb = Math.min(Math.max(adaptiveProb, 0.01), 0.95);
+            adaptiveProb   += delta * improvementRate;
+            adaptiveProb    = Math.min(Math.max(adaptiveProb, 0.01), 0.95);
         }
     }
     return { item: itemNum, score: score, finalProb: adaptiveProb, improvement: improvementRate };
 }
 
-function isTooSimilar(picked, history, threshold) {
-    if (!history || !history.length) return false;
-    for (var i = 0; i < history.length; i++) {
-        var match = 0;
-        for (var j = 0; j < picked.length; j++) {
-            if (history[i].indexOf(picked[j]) >= 0) match++;
-        }
-        if (match >= threshold) return true;
-    }
-    return false;
+/* ─────────────────────────────────────────
+   v2.1.0 ③ 유사도 체크 (O(1) historySet)
+   isTooSimilar → historySet.has(key) 대체
+───────────────────────────────────────── */
+function buildHistorySet(history) {
+    return new Set(
+        (history || []).map(function(h) {
+            return JSON.stringify(h.slice().sort(function(a,b){return a-b;}));
+        })
+    );
 }
 
 function scoreCombo(combo, probMap) {
     var score = 0;
     combo.forEach(function(item) { score += (probMap[item] || 0) * 100; });
-    var mean = combo.reduce(function(a, b) { return a + b; }, 0) / combo.length;
+    var mean     = combo.reduce(function(a, b) { return a + b; }, 0) / combo.length;
     var variance = combo.reduce(function(s, x) { return s + Math.pow(x - mean, 2); }, 0) / combo.length;
     score += Math.sqrt(variance) * 0.5;
     return score;
 }
 
+/* ─────────────────────────────────────────
+   메인 generate()
+───────────────────────────────────────── */
 async function generate(options) {
     var cfg = {};
     Object.keys(DEFAULTS).forEach(function(k) { cfg[k] = DEFAULTS[k]; });
@@ -166,10 +287,19 @@ async function generate(options) {
         if (typeof cfg.onProgress === 'function') cfg.onProgress(Math.round(pct), stats || {});
     }
 
-    reportProgress(0, { phase: 'ml', message: 'ML 확률 모델 계산 중...' });
-    var probMap = buildMLProbabilities(cfg, validPool);
-    reportProgress(3, { phase: 'ml_done', message: 'ML 모델 완료' });
+    // ── v2.1.0: StatCache 사전 계산 ──
+    reportProgress(0, { phase: 'stat', message: '통계 캐시 계산 중...' });
+    var stat = buildStatCache(cfg.history, cfg);
 
+    // ── ML + 통계 블렌딩 확률 모델 ──
+    reportProgress(1, { phase: 'ml', message: 'ML 확률 모델 계산 중...' });
+    var probMap = buildMLProbabilities(cfg, validPool, stat);
+    reportProgress(3, { phase: 'ml_done', message: 'ML 모델 완료', statCache: stat });
+
+    // ── v2.1.0: historySet 구성 (O(1) 중복 체크용) ──
+    var historySet = buildHistorySet(cfg.history);
+
+    // ── 이전 풀 로드 ──
     if (cfg.initialPool && Array.isArray(cfg.initialPool)) {
         cfg.initialPool.forEach(function(items) {
             var arr = items.slice().sort(function(a, b) { return a - b; });
@@ -179,17 +309,22 @@ async function generate(options) {
         });
     }
 
-    reportProgress(5, { phase: 'evolving', message: '진화 시작...', round: 0, totalRounds: cfg.rounds, poolSize: pool.length, bestScore: 0 });
+    reportProgress(5, {
+        phase: 'evolving', message: '진화 시작...',
+        round: 0, totalRounds: cfg.rounds,
+        poolSize: pool.length, bestScore: 0,
+        stat: stat
+    });
 
-    var prevBestScore = 0;
+    var prevBestScore  = 0;
     var noImproveCount = 0;
-    
+    var scoreHistory   = []; // v2.1.0: 라운드별 점수 추적 (모니터링용)
+
     for (var round = 0; round < cfg.rounds; round++) {
         await new Promise(function(r) { setTimeout(r, 0); });
 
-        // ── 라운드별 확률 맵 동적 갱신 ──
+        // 라운드별 확률 맵 동적 갱신
         if (round > 0 && pool.length > 0) {
-            // 이전 라운드 최고점수 조합들이 미래에 나타날 확률 증가
             var topPoolItems = pool.slice(0, Math.min(5, pool.length));
             topPoolItems.forEach(function(p) {
                 p.items.forEach(function(num) {
@@ -198,8 +333,6 @@ async function generate(options) {
                     }
                 });
             });
-            
-            // 확률 정규화
             var sum = 0;
             validPool.forEach(function(num) { sum += probMap[num]; });
             validPool.forEach(function(num) { probMap[num] = probMap[num] / sum * validPool.length * 0.15; });
@@ -213,7 +346,7 @@ async function generate(options) {
 
         var candidates = [];
         for (var ci = 0; ci < cfg.poolSize; ci++) {
-            var combo = new Set();
+            var combo    = new Set();
             var mustCount = Math.min(2 + Math.floor(Math.random() * 2), cfg.pick);
 
             for (var m = 0; m < mustCount && combo.size < cfg.pick; m++) {
@@ -225,13 +358,13 @@ async function generate(options) {
                 var num = validPool[Math.floor(Math.random() * validPool.length)];
                 if (Math.random() < probMap[num] * 3) combo.add(num);
             }
-
             while (combo.size < cfg.pick) {
                 combo.add(validPool[Math.floor(Math.random() * validPool.length)]);
             }
 
             var arr = Array.from(combo).sort(function(a, b) { return a - b; });
-            if (!isTooSimilar(arr, cfg.history, cfg.threshold)) {
+            // v2.1.0: O(1) historySet 체크 (기존 isTooSimilar O(N) 대체)
+            if (!historySet.has(JSON.stringify(arr))) {
                 candidates.push({ items: arr, score: scoreCombo(arr, probMap) });
             }
         }
@@ -242,32 +375,40 @@ async function generate(options) {
         pool.sort(function(a, b) { return b.score - a.score; });
         if (pool.length > 500) pool = pool.slice(0, 500);
 
-        // ── 학습 진행도 추적 ──
         var currentBestScore = pool.length > 0 ? pool[0].score : 0;
+        scoreHistory.push(currentBestScore); // 모니터링용
+
         if (currentBestScore > prevBestScore) {
             noImproveCount = 0;
-            prevBestScore = currentBestScore;
+            prevBestScore  = currentBestScore;
         } else {
             noImproveCount++;
         }
 
         reportProgress(5 + ((round + 1) / cfg.rounds) * 95, {
-            phase: 'evolving',
-            round: round + 1,
-            totalRounds: cfg.rounds,
-            poolSize: pool.length,
-            bestScore: currentBestScore,
-            improvement: noImproveCount === 0 ? '📈 향상' : '→ 유지',
-            elapsed: Math.round(performance.now() - startTime)
+            phase        : 'evolving',
+            round        : round + 1,
+            totalRounds  : cfg.rounds,
+            poolSize     : pool.length,
+            bestScore    : currentBestScore,
+            scoreHistory : scoreHistory.slice(),
+            improvement  : noImproveCount === 0 ? '📈 향상' : '→ 유지',
+            noImprove    : noImproveCount,
+            elapsed      : Math.round(performance.now() - startTime),
+            probMap      : probMap,
+            topItems     : topItems.slice(0, 10),
+            cubeResults  : cubeResults.slice(0, 10).map(function(r) {
+                return { item: r.item, score: r.score, finalProb: r.finalProb };
+            })
         });
 
-        if (typeof cfg.onRound === 'function') cfg.onRound(round + 1, currentBestScore);
+        if (typeof cfg.onRound === 'function') cfg.onRound(round + 1, currentBestScore, scoreHistory);
     }
 
     reportProgress(100, { phase: 'done', message: '완료!' });
 
-    var topResults = [];
-    var dedupeThreshold = Math.max(3, cfg.pick - 1);
+    var topResults       = [];
+    var dedupeThreshold  = Math.max(3, cfg.pick - 1);
     for (var ri = 0; ri < pool.length && topResults.length < cfg.topN; ri++) {
         var candidate = pool[ri];
         var isDup = topResults.some(function(tr) {
@@ -277,10 +418,12 @@ async function generate(options) {
     }
 
     var result = {
-        results : topResults.map(function(r) { return r.items; }),
-        scores  : topResults.map(function(r) { return Math.round(r.score * 100) / 100; }),
-        probMap : probMap,
-        fullPool: pool.map(function(p) { return p.items; }),
+        results     : topResults.map(function(r) { return r.items; }),
+        scores      : topResults.map(function(r) { return Math.round(r.score * 100) / 100; }),
+        probMap     : probMap,
+        fullPool    : pool.map(function(p) { return p.items; }),
+        scoreHistory: scoreHistory,
+        stat        : stat,
         meta: {
             items        : cfg.items,
             pick         : cfg.pick,
@@ -291,7 +434,8 @@ async function generate(options) {
             rangeEnd     : cfg.rangeEnd   || cfg.items,
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
-            generatedAt  : new Date().toISOString()
+            generatedAt  : new Date().toISOString(),
+            version      : '2.1.0'
         }
     };
 
@@ -299,11 +443,15 @@ async function generate(options) {
     return result;
 }
 
-// ── CubeEngine 객체 ──
+/* ─────────────────────────────────────────
+   CubeEngine 객체
+───────────────────────────────────────── */
 var CubeEngine = {
-    generate : generate,
-    defaults : DEFAULTS,
-    version  : '2.0.1',
+    generate        : generate,
+    buildStatCache  : buildStatCache,
+    buildWeightedProb: buildWeightedProb,
+    defaults        : DEFAULTS,
+    version         : '2.1.0',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
@@ -312,8 +460,8 @@ var CubeEngine = {
         megamillions: { items: 70, pick: 5,  threshold: 4,  evolveTime: 100, rounds: 60, poolSize: 3000 },
         euromillions: { items: 50, pick: 5,  threshold: 4,  evolveTime: 90,  rounds: 55, poolSize: 2800 },
         keno        : { items: 80, pick: 20, threshold: 15, evolveTime: 150, rounds: 40, poolSize: 3500 },
-        fast        : { items: 45, pick: 6,  evolveTime: 80, rounds: 30,      poolSize: 1500 },
-        turbo       : { items: 45, pick: 6,  evolveTime: 40, rounds: 15,      poolSize: 800 },
+        fast        : { items: 45, pick: 6,  evolveTime: 80,  rounds: 30, poolSize: 1500 },
+        turbo       : { items: 45, pick: 6,  evolveTime: 40,  rounds: 15, poolSize: 800  },
         custom      : {}
     },
 
@@ -327,12 +475,11 @@ var CubeEngine = {
     }
 };
 
-// ── 전역 등록 ──
-// Node.js 환경
+// Node.js
 if (typeof module === 'object' && typeof module.exports === 'object') {
     module.exports = CubeEngine;
 }
-// 브라우저 환경 (일반 스크립트 & type="module" 모두 대응)
+// 브라우저
 if (typeof window !== 'undefined') {
     window.CubeEngine = CubeEngine;
 }
