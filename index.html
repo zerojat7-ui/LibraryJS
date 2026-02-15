@@ -3,622 +3,629 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CubeEngine v2.1.0 — 학습 상태 모니터</title>
+<title>CubeEngine v2.1.0 — 학습 모니터</title>
 <style>
 :root {
-    --bg:      #0d0f14;
-    --card:    #161b25;
-    --border:  #232b3a;
-    --primary: #00d4ff;
-    --green:   #00e676;
-    --yellow:  #ffd740;
-    --red:     #ff5252;
-    --purple:  #ce93d8;
-    --text:    #cdd9e5;
-    --muted:   #637085;
+  --bg:#0d1117; --card:#161b22; --border:#30363d;
+  --green:#00ff88; --blue:#58a6ff; --yellow:#f5a623;
+  --red:#ff6b6b; --purple:#a371f7; --text:#e6edf3; --sub:#8b949e;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: 'Pretendard', 'Noto Sans KR', monospace; font-size: 13px; padding: 16px; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',monospace;background:var(--bg);color:var(--text);padding:12px;min-height:100vh}
 
-/* ── 헤더 ── */
-.header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding: 12px 18px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
-.header h1 { font-size: 15px; color: var(--primary); letter-spacing: 1px; }
-.badge { background: #1a2a3a; color: var(--primary); font-size:11px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--primary); }
-#engineStatus { font-size:12px; color: var(--muted); }
+.hd{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;margin-bottom:12px}
+.hd-title{font-size:17px;font-weight:bold;color:var(--green)}
+.hd-meta{font-size:11px;color:var(--sub);text-align:right;line-height:1.8}
+.badge{display:inline-block;background:#21262d;border:1px solid var(--border);color:var(--blue);font-size:10px;padding:2px 7px;border-radius:20px;margin-left:6px}
 
-/* ── 그리드 ── */
-.grid  { display:grid; gap:12px; grid-template-columns: 1fr 1fr 1fr; }
-.grid2 { display:grid; gap:12px; grid-template-columns: 2fr 1fr; }
-.span2 { grid-column: span 2; }
-.span3 { grid-column: span 3; }
+.btn-row{display:flex;gap:8px;margin-bottom:12px}
+.btn{flex:1;padding:11px;border:none;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;transition:all .15s}
+.btn:active{transform:scale(.97)}
+.btn-run{background:#238636;color:#fff}.btn-run:hover{background:#2ea043}
+.btn-load{background:#21262d;color:var(--text);border:1px solid var(--border)}.btn-load:hover{background:#30363d}
+.btn-reset{background:#6e1414;color:#fff}.btn-reset:hover{background:#b91c1c}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 
-/* ── 카드 ── */
-.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
-.card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display:flex; align-items:center; gap:6px; }
-.card-title .dot { width:7px; height:7px; border-radius:50%; background: var(--primary); display:inline-block; }
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
+@media(max-width:680px){.g2,.g4{grid-template-columns:1fr 1fr}}
 
-/* ── KPI 숫자 ── */
-.kpi { font-size: 26px; font-weight: 700; color: var(--primary); line-height:1; }
-.kpi-label { font-size: 11px; color: var(--muted); margin-top:4px; }
-.kpi-row { display:flex; gap:20px; flex-wrap:wrap; }
-.kpi-item { flex:1; min-width:80px; }
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+.card-ttl{font-size:11px;font-weight:bold;color:var(--sub);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%}
+.dg{background:var(--green);box-shadow:0 0 6px var(--green)}
+.db{background:var(--blue);box-shadow:0 0 5px var(--blue)}
+.dy{background:var(--yellow)}.dr{background:var(--red)}.dp{background:var(--purple)}
 
-/* ── 진행바 ── */
-.prog-wrap { background: #1e2836; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0; }
-.prog-fill  { height:100%; background: linear-gradient(90deg, #00d4ff, #00e676); border-radius:4px; transition: width .25s; }
-.prog-fill.active { animation: pulse-bar 1.2s infinite alternate; }
-@keyframes pulse-bar { from { opacity:.8; } to { opacity:1; } }
+.kv{font-size:26px;font-weight:bold;color:var(--green);line-height:1.1}
+.ks{font-size:11px;color:var(--sub);margin-top:3px}
+.kd{font-size:12px;margin-top:4px}
+.up{color:var(--green)}.dn{color:var(--red)}.eq{color:var(--sub)}
 
-/* ── 차트 캔버스 ── */
-canvas { width:100% !important; display:block; }
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:bold}
+.c-idle{background:#21262d;color:var(--sub);border:1px solid var(--border)}
+.c-run{background:#1a3a2a;color:var(--green);border:1px solid #2ea043;animation:blink .9s infinite}
+.c-done{background:#1a2a3a;color:var(--blue);border:1px solid var(--blue)}
+.c-err{background:#3a1a1a;color:var(--red);border:1px solid var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
 
-/* ── 확률 히트맵 ── */
-#probGrid { display:grid; grid-template-columns: repeat(9,1fr); gap:3px; }
-.prob-cell { aspect-ratio:1; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; cursor:default; transition: opacity .3s; }
-.prob-cell:hover { transform: scale(1.15); z-index:10; position:relative; }
+.pb-wrap{background:#21262d;border-radius:4px;height:7px;overflow:hidden;margin:8px 0}
+.pb-fill{height:100%;border-radius:4px;transition:width .25s;background:var(--green)}
 
-/* ── 통계 바 ── */
-.stat-list { display:flex; flex-direction:column; gap:5px; }
-.stat-item { display:flex; align-items:center; gap:8px; }
-.stat-label { width:28px; text-align:right; color: var(--muted); font-size:11px; }
-.stat-bar-wrap { flex:1; background:#1e2836; height:6px; border-radius:3px; overflow:hidden; }
-.stat-bar { height:100%; border-radius:3px; transition: width .4s; }
-.stat-val { width:36px; text-align:right; font-size:11px; color: var(--text); }
+.timeline{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px}
+.tl{width:13px;height:13px;border-radius:3px;background:#21262d;border:1px solid var(--border);transition:background .15s}
+.tl.done{background:var(--green);border-color:var(--green)}
+.tl.active{background:var(--yellow);border-color:var(--yellow);animation:blink .6s infinite}
 
-/* ── 결과 콤보 ── */
-.combo-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; align-items:center; }
-.ball { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0; }
-.b1  { background:#ffd740; color:#000; }
-.b10 { background:#00bcd4; color:#000; }
-.b20 { background:#f44336; color:#fff; }
-.b30 { background:#9c27b0; color:#fff; }
-.b40 { background:#4caf50; color:#fff; }
-.score-badge { font-size:11px; color: var(--yellow); margin-left:4px; }
+.heatmap{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;margin-top:6px}
+.hm{aspect-ratio:1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;cursor:pointer;transition:transform .12s}
+.hm:hover{transform:scale(1.25);z-index:10;position:relative}
 
-/* ── 상세 로그 ── */
-.log-box { height:130px; overflow-y:auto; font-family:monospace; font-size:11px; background:#080b10; border-radius:6px; padding:8px; }
-.log-box::-webkit-scrollbar { width:4px; } .log-box::-webkit-scrollbar-thumb { background:#333; }
-.log-line { padding:1px 0; border-bottom:1px solid #111; }
-.log-line.up   { color: var(--green); }
-.log-line.hold { color: var(--muted); }
-.log-line.err  { color: var(--red); }
+.bar-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px}
+.bar-n{width:22px;text-align:right;color:var(--blue);font-weight:bold}
+.bar-bg{flex:1;background:#21262d;border-radius:3px;height:13px;overflow:hidden}
+.bar-f{height:100%;border-radius:3px;background:var(--purple);transition:width .35s}
+.bar-p{width:40px;text-align:right;color:var(--sub)}
 
-/* ── 실행 버튼 ── */
-.run-btn { width:100%; padding:14px; border:none; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; background: linear-gradient(135deg,#6200ea,#0091ea); color:#fff; letter-spacing:.5px; transition: opacity .2s; }
-.run-btn:disabled { opacity:.4; cursor:not-allowed; }
-.run-btn:not(:disabled):hover { opacity:.85; }
+canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px solid var(--border)}
 
-/* ── 비교 테이블 ── */
-.cmp-table { width:100%; border-collapse:collapse; font-size:11px; }
-.cmp-table th { color: var(--muted); padding:4px 6px; text-align:left; border-bottom:1px solid var(--border); }
-.cmp-table td { padding:4px 6px; border-bottom:1px solid #1a1f2e; }
-.up   { color: var(--green); }
-.down { color: var(--red); }
-.same { color: var(--muted); }
+.cl{max-height:140px;overflow-y:auto;font-size:11px;margin-top:6px}
+.cl-row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1c2128}
+.cl-n{color:var(--blue);font-weight:bold;width:26px}
+.cl-up{color:var(--green)}.cl-dn{color:var(--red)}
 
-/* ── 탭 ── */
-.tabs { display:flex; gap:2px; margin-bottom:10px; }
-.tab { padding:5px 12px; border-radius:5px; font-size:11px; cursor:pointer; background:#1a1f2e; color:var(--muted); border:1px solid var(--border); }
-.tab.active { background: var(--primary); color:#000; font-weight:700; }
+.term{background:#010409;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:monospace;font-size:11px;color:var(--green);height:160px;overflow-y:auto;line-height:1.7;margin-top:6px}
+.ti{color:var(--blue)}.tw{color:var(--yellow)}.ts{color:var(--green)}.te{color:var(--red)}
 
-/* ── 반응형 ── */
-@media(max-width:900px) { .grid,.grid2 { grid-template-columns:1fr 1fr; } .span3 { grid-column:span 2; } }
-@media(max-width:600px) { .grid,.grid2 { grid-template-columns:1fr; } .span2,.span3 { grid-column:span 1; } }
+.combo-wrap{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.combo-row{display:flex;align-items:center;gap:4px}
+.cr{font-size:10px;color:var(--sub);width:20px}
+.ball{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold}
+.b1{background:linear-gradient(135deg,#FFD700,#FFA500);color:#222}
+.b2{background:linear-gradient(135deg,#4dabf7,#1971c2);color:#fff}
+.b3{background:linear-gradient(135deg,#ff6b6b,#c92a2a);color:#fff}
+.b4{background:linear-gradient(135deg,#495057,#212529);color:#fff}
+.b5{background:linear-gradient(135deg,#51cf66,#2f9e44);color:#fff}
+.cs{font-size:10px;color:var(--purple);margin-left:4px}
+
+/* 학습 경로 표시 */
+.path-box{background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:11px;font-family:monospace;margin-bottom:10px}
+.path-row{display:flex;align-items:center;gap:10px;padding:3px 0}
+.path-label{color:var(--sub);width:100px;flex-shrink:0}
+.path-val{color:var(--yellow);font-weight:bold}
+.path-match{color:var(--green);font-size:10px;margin-left:6px}
+.path-mismatch{color:var(--red);font-size:10px;margin-left:6px}
+
+.sg{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:6px}
+.sg-c{background:#21262d;border-radius:4px;padding:4px 2px;text-align:center;font-size:9px}
+.sg-n{color:var(--blue);font-weight:bold}.sg-v{color:var(--green);margin-top:1px}
 </style>
 </head>
 <body>
 
-<!-- ── 헤더 ── -->
-<div class="header">
-    <h1>⬡ CubeEngine <span class="badge">v2.1.0</span></h1>
-    <span id="engineStatus">대기 중</span>
-    <span id="iterBadge" class="badge">Iter: 0</span>
+<!-- 헤더 -->
+<div class="hd">
+  <div>
+    <span class="hd-title">🧊 CubeEngine 학습 모니터</span>
+    <span class="badge" id="verBadge">v2.1.0</span>
+  </div>
+  <div class="hd-meta">
+    <div>상태: <span id="chipWrap"><span class="chip c-idle">⬜ 대기 중</span></span></div>
+    <div>누적 학습: <strong id="iterCount" style="color:var(--green)">0</strong>회 &nbsp;|&nbsp; 출처: <span id="lastSource">-</span> &nbsp;|&nbsp; 마지막: <span id="lastRun">-</span></div>
+  </div>
 </div>
 
-<!-- ── 실행 버튼 + 진행 ── -->
-<div class="card" style="margin-bottom:12px;">
-    <div class="kpi-row" style="margin-bottom:10px;">
-        <div class="kpi-item"><div class="kpi" id="kpiRound">0<span style="font-size:14px;color:var(--muted)">/50</span></div><div class="kpi-label">라운드</div></div>
-        <div class="kpi-item"><div class="kpi" id="kpiBest">-</div><div class="kpi-label">최고 점수</div></div>
-        <div class="kpi-item"><div class="kpi" id="kpiPool">-</div><div class="kpi-label">후보 풀</div></div>
-        <div class="kpi-item"><div class="kpi" id="kpiElapsed">0s</div><div class="kpi-label">경과시간</div></div>
-        <div class="kpi-item"><div class="kpi" id="kpiImprove" style="font-size:18px;">-</div><div class="kpi-label">학습상태</div></div>
-    </div>
-    <div class="prog-wrap"><div id="progFill" class="prog-fill" style="width:0%"></div></div>
-    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:10px;">
-        <span id="progPhase">-</span><span id="progPct">0%</span>
-    </div>
-    <button class="run-btn" id="runBtn">▶ 학습 및 진화 시작 (Firebase 연동)</button>
+<!-- 학습 경로 동기화 상태 -->
+<div class="path-box">
+  <div class="path-row">
+    <span class="path-label">📍 컬렉션</span>
+    <span class="path-val">lotto_history</span>
+    <span class="path-match">✅ 로또 웹과 동일</span>
+  </div>
+  <div class="path-row">
+    <span class="path-label">📄 문서</span>
+    <span class="path-val">shared_engine_state</span>
+    <span class="path-match">✅ 로또 웹과 동일</span>
+  </div>
+  <div class="path-row">
+    <span class="path-label">🔑 probMap 키</span>
+    <span class="path-val">n1, n2, ... n45</span>
+    <span class="path-match">✅ 로또 웹과 동일 포맷</span>
+  </div>
+  <div class="path-row">
+    <span class="path-label">🔀 병합 방식</span>
+    <span class="path-val">트랜잭션 가중평균 누적</span>
+    <span class="path-match">✅ 로또 웹과 동일 로직</span>
+  </div>
 </div>
 
-<!-- ── 메인 그리드 ── -->
-<div class="grid" style="margin-bottom:12px;">
-
-    <!-- ① 점수 추이 차트 -->
-    <div class="card span2">
-        <div class="card-title"><span class="dot" style="background:var(--green)"></span>라운드별 최고 점수 추이</div>
-        <canvas id="scoreChart" height="100"></canvas>
-    </div>
-
-    <!-- ② 수렴 지표 -->
-    <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--yellow)"></span>학습 수렴 지표</div>
-        <div class="stat-list" id="convergeStat">
-            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
-        </div>
-    </div>
+<!-- 버튼 -->
+<div class="btn-row">
+  <button class="btn btn-run"   id="btnRun">▶ 학습 실행 (로또 웹과 공유)</button>
+  <button class="btn btn-load"  id="btnLoad">📥 상태 불러오기</button>
+  <button class="btn btn-reset" id="btnReset">🗑 초기화</button>
 </div>
 
-<div class="grid2" style="margin-bottom:12px;">
-
-    <!-- ③ 확률 히트맵 -->
-    <div class="card">
-        <div class="card-title"><span class="dot"></span>번호 확률 히트맵 (ML + 통계 블렌딩)</div>
-        <div id="probGrid"></div>
-        <div style="display:flex; gap:12px; margin-top:8px; font-size:10px; color:var(--muted);">
-            <span>■ <span style="color:#0d47a1">낮음</span></span>
-            <span>■ <span style="color:#1565c0">중간</span></span>
-            <span>■ <span style="color:#00d4ff">높음</span></span>
-            <span>■ <span style="color:#00e676">최고</span></span>
-        </div>
-    </div>
-
-    <!-- ④ StatCache 탭 패널 -->
-    <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--purple)"></span>StatCache 분석</div>
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('freq')">빈도</div>
-            <div class="tab" onclick="switchTab('recent')">최근</div>
-            <div class="tab" onclick="switchTab('gap')">간격</div>
-            <div class="tab" onclick="switchTab('rehit')">재출현</div>
-        </div>
-        <div id="statBars" class="stat-list">
-            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
-        </div>
-    </div>
+<!-- KPI -->
+<div class="g4">
+  <div class="card"><div class="card-ttl"><div class="dot dg"></div>누적 Iteration</div><div class="kv" id="kpiIter">0</div><div class="ks">총 학습 횟수</div></div>
+  <div class="card"><div class="card-ttl"><div class="dot db"></div>Pool 크기</div><div class="kv" id="kpiPool" style="color:var(--blue)">0</div><div class="ks">생존 조합 수</div></div>
+  <div class="card"><div class="card-ttl"><div class="dot dy"></div>Best Score</div><div class="kv" id="kpiBest" style="color:var(--yellow)">-</div><div class="kd" id="kpiBestDiff"></div></div>
+  <div class="card"><div class="card-ttl"><div class="dot dp"></div>변화 번호</div><div class="kv" id="kpiChanged" style="color:var(--purple)">0</div><div class="ks">확률 변동 수</div></div>
 </div>
 
-<div class="grid" style="margin-bottom:12px;">
-
-    <!-- ⑤ 추천 결과 -->
-    <div class="card span2">
-        <div class="card-title"><span class="dot" style="background:var(--green)"></span>최종 추천 조합</div>
-        <div id="resultCombos"><div style="color:var(--muted);">완료 후 표시됩니다</div></div>
+<!-- 진행 + 타임라인 -->
+<div class="g2">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>진행 상황</div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+      <span id="phaseText" style="color:var(--yellow)">대기 중</span>
+      <span id="pctText"   style="color:var(--green);font-weight:bold">0%</span>
     </div>
-
-    <!-- ⑥ 저장 상태 -->
-    <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--yellow)"></span>Firebase 상태</div>
-        <div id="fbStatus" class="stat-list" style="font-size:12px;">
-            <div style="color:var(--muted);">-</div>
-        </div>
+    <div class="pb-wrap"><div class="pb-fill" id="mainBar" style="width:0%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--sub);margin-top:4px">
+      <span>경과: <span id="elapsed">0s</span></span>
+      <span>라운드: <span id="roundNow">0</span>/<span id="roundTotal">50</span></span>
+      <span>pool: <span id="poolNow">0</span></span>
     </div>
+  </div>
+  <div class="card">
+    <div class="card-ttl"><div class="dot db"></div>라운드 타임라인</div>
+    <div class="timeline" id="timeline"></div>
+  </div>
 </div>
 
-<!-- ⑦ probMap 변화 비교 + 라운드 로그 -->
-<div class="grid2">
-    <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--red)"></span>ProbMap 변화 (이전 → 현재)</div>
-        <div id="probDiffTable" style="max-height:180px;overflow-y:auto;">
-            <div style="color:var(--muted);font-size:11px;">실행 후 표시됩니다</div>
-        </div>
-    </div>
-    <div class="card">
-        <div class="card-title"><span class="dot"></span>라운드 로그</div>
-        <div id="roundLog" class="log-box"></div>
-    </div>
+<!-- 히트맵 + 바 차트 -->
+<div class="g2">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dp"></div>확률맵 히트맵 (1~45)</div>
+    <div class="heatmap" id="heatmap"></div>
+  </div>
+  <div class="card">
+    <div class="card-ttl"><div class="dot dy"></div>상위 10번호 확률</div>
+    <div id="barChart" style="margin-top:6px"></div>
+  </div>
 </div>
 
-<!-- ── Firebase SDK ── -->
+<!-- 학습 곡선 + 변화 로그 -->
+<div class="g2">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>학습 곡선 (Best Score)</div>
+    <canvas id="curveCanvas" height="110"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-ttl"><div class="dot db"></div>확률 변화 로그 (이전 대비)</div>
+    <div class="cl" id="changeLog"><span style="color:var(--sub)">대기 중...</span></div>
+  </div>
+</div>
+
+<!-- StatCache 분석 -->
+<div class="card" style="margin-bottom:10px">
+  <div class="card-ttl"><div class="dot dy"></div>StatCache — 빈도 / 최근30회 / 간격 / 재출현 (Top 10)</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px">
+    <div><div style="font-size:10px;color:var(--sub);margin-bottom:3px">🔥 Top 빈도</div><div class="sg" id="statFreq"></div></div>
+    <div><div style="font-size:10px;color:var(--sub);margin-bottom:3px">⚡ 최근30회</div><div class="sg" id="statRecent"></div></div>
+    <div><div style="font-size:10px;color:var(--sub);margin-bottom:3px">⏱ 간격(미출현)</div><div class="sg" id="statGap"></div></div>
+    <div><div style="font-size:10px;color:var(--sub);margin-bottom:3px">🔄 재출현률</div><div class="sg" id="statReHit"></div></div>
+  </div>
+</div>
+
+<!-- 추천 결과 + 실시간 로그 -->
+<div class="g2">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>추천 조합 Top 5</div>
+    <div class="combo-wrap" id="comboWrap"><span style="color:var(--sub);font-size:12px">학습 완료 후 표시됩니다</span></div>
+  </div>
+  <div class="card">
+    <div class="card-ttl"><div class="dot db"></div>실시간 로그</div>
+    <div class="term" id="terminal"><span class="ti">[시스템] CubeEngine v2.1.0 준비 완료</span></div>
+  </div>
+</div>
+
 <script src="cube-engine.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-
 <script>
-/* ══════════════════════════════════════
-   Firebase 초기화
-══════════════════════════════════════ */
-var firebaseConfig = {
-    apiKey: "AIzaSyB4S8qkK07QYXq5yw0Coo69sZBIk0uew2E",
-    authDomain: "randextraccube-engine.firebaseapp.com",
-    projectId: "randextraccube-engine",
-    storageBucket: "randextraccube-engine.firebasestorage.app",
-    messagingSenderId: "515597545439",
-    appId: "1:515597545439:web:f1e804554406719a3cde6a"
-};
-firebase.initializeApp(firebaseConfig);
-var db     = firebase.firestore();
-var DOC    = db.collection("CubeEngine").doc("main_engine_data");
+// ══════════════════════════════════════════════════
+//  Firebase 초기화
+//  ★ 로또 웹과 완전히 동일한 컬렉션/문서 사용
+//    컬렉션: lotto_history
+//    문서  : shared_engine_state
+//    키    : n1~n45 (접두사 'n')
+// ══════════════════════════════════════════════════
+firebase.initializeApp({
+  apiKey:"AIzaSyB4S8qkK07QYXq5yw0Coo69sZBIk0uew2E",
+  authDomain:"randextraccube-engine.firebaseapp.com",
+  projectId:"randextraccube-engine",
+  storageBucket:"randextraccube-engine.firebasestorage.app",
+  messagingSenderId:"515597545439",
+  appId:"1:515597545439:web:f1e804554406719a3cde6a"
+});
+var db = firebase.firestore();
 
-/* ══════════════════════════════════════
-   유틸
-══════════════════════════════════════ */
-var $ = function(id) { return document.getElementById(id); };
+// ★ 로또 웹과 동일한 경로
+var SHARED_COL = 'lotto_history';
+var SHARED_DOC = 'shared_engine_state';
+var DOC = db.collection(SHARED_COL).doc(SHARED_DOC);
 
-/* ══════════════════════════════════════
-   차트 (Canvas — 의존성 없음)
-══════════════════════════════════════ */
-var scoreData = [];
+// ══ 상태 ══
+var S = { iter:0, prevMap:null, curMap:null, curve:[], prevBest:0, running:false, source:'-' };
+var $ = function(id){ return document.getElementById(id); };
 
-function drawScoreChart() {
-    var canvas = $('scoreChart');
-    var W = canvas.offsetWidth || 400;
-    canvas.width  = W * window.devicePixelRatio;
-    canvas.height = 100 * window.devicePixelRatio;
-    var ctx = canvas.getContext('2d');
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    ctx.clearRect(0, 0, W, 100);
+// ══ 터미널 ══
+function tlog(msg, cls) {
+  var t=$('terminal');
+  var d=document.createElement('div'); d.className=cls||'';
+  d.textContent='['+new Date().toLocaleTimeString('ko-KR')+'] '+msg;
+  t.appendChild(d); t.scrollTop=t.scrollHeight;
+}
 
-    if (scoreData.length < 2) {
-        ctx.fillStyle = '#637085'; ctx.font='11px monospace'; ctx.textAlign='center';
-        ctx.fillText('데이터 대기 중...', W/2, 50); return;
-    }
+// ══ 상태 칩 ══
+function setChip(type){
+  var m={idle:'<span class="chip c-idle">⬜ 대기 중</span>',
+         run :'<span class="chip c-run">🟢 실행 중</span>',
+         done:'<span class="chip c-done">🔵 완료</span>',
+         err :'<span class="chip c-err">🔴 오류</span>'};
+  $('chipWrap').innerHTML=m[type]||m.idle;
+}
 
-    var min = Math.min(...scoreData) * 0.98;
-    var max = Math.max(...scoreData) * 1.02;
-    var pad = { l:30, r:10, t:10, b:20 };
-    var cw = W - pad.l - pad.r;
-    var ch = 100 - pad.t - pad.b;
+// ══ 타임라인 ══
+function initTL(n){
+  var tl=$('timeline'); tl.innerHTML=''; $('roundTotal').textContent=n;
+  for(var i=0;i<n;i++){var d=document.createElement('div');d.className='tl';d.id='tl'+i;tl.appendChild(d);}
+}
+function tickTL(r){
+  var p=document.getElementById('tl'+(r-1)); if(p) p.className='tl done';
+  var c=document.getElementById('tl'+r);    if(c) c.className='tl active';
+}
 
-    // 그리드
-    ctx.strokeStyle = '#1e2836'; ctx.lineWidth = 1;
-    for (var g=0; g<=4; g++) {
-        var y = pad.t + ch * g/4;
-        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+cw, y); ctx.stroke();
-        var val = max - (max-min)*g/4;
-        ctx.fillStyle='#637085'; ctx.font='9px monospace'; ctx.textAlign='right';
-        ctx.fillText(val.toFixed(1), pad.l-4, y+3);
-    }
+// ══ 히트맵 ══
+function renderHM(probMap){
+  if(!probMap) return;
+  var hm=$('heatmap'); hm.innerHTML='';
+  var vals=[]; for(var i=1;i<=45;i++) vals.push(probMap[i]||0);
+  var mx=Math.max.apply(null,vals)||1, mn=Math.min.apply(null,vals);
+  for(var i=1;i<=45;i++){
+    var v=probMap[i]||0, t=(v-mn)/(mx-mn||1);
+    var r=Math.round(t*80), g=Math.round(100+t*155), b=Math.round(50+t*50);
+    var c=document.createElement('div'); c.className='hm';
+    c.style.background='rgb('+r+','+g+','+b+')';
+    c.style.color=t>0.55?'#000':'#fff';
+    c.title='No.'+i+': '+(v*100).toFixed(2)+'%';
+    c.textContent=i; hm.appendChild(c);
+  }
+}
 
-    // 라인
-    ctx.beginPath(); ctx.strokeStyle='#00e676'; ctx.lineWidth=2; ctx.lineJoin='round';
-    scoreData.forEach(function(v, i) {
-        var x = pad.l + cw * i / (scoreData.length - 1);
-        var y = pad.t + ch * (1 - (v - min)/(max - min || 1));
-        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+// ══ 바 차트 ══
+function renderBar(probMap){
+  if(!probMap) return;
+  var arr=[]; for(var i=1;i<=45;i++) arr.push({n:i,v:probMap[i]||0});
+  arr.sort(function(a,b){return b.v-a.v;}); var top=arr.slice(0,10);
+  var mx=top[0].v||1, html='';
+  top.forEach(function(x){
+    var pct=(x.v/mx*100).toFixed(0);
+    html+='<div class="bar-row"><div class="bar-n">'+x.n+'</div>'+
+      '<div class="bar-bg"><div class="bar-f" style="width:'+pct+'%"></div></div>'+
+      '<div class="bar-p">'+(x.v*100).toFixed(2)+'%</div></div>';
+  });
+  $('barChart').innerHTML=html;
+}
+
+// ══ 변화 로그 ══
+function renderCL(oldMap, newMap){
+  if(!newMap) return;
+  var html='', changed=0;
+  for(var i=1;i<=45;i++){
+    var o=oldMap?(oldMap[i]||0):0, n=newMap[i]||0, d=n-o;
+    if(Math.abs(d)<0.0001) continue; changed++;
+    var up=d>0;
+    html+='<div class="cl-row"><span class="cl-n">'+i+'</span>'+
+      '<span style="color:var(--sub)">'+o.toFixed(4)+' → </span>'+
+      '<span class="'+(up?'cl-up':'cl-dn')+'">'+n.toFixed(4)+' '+(up?'▲':'▼')+Math.abs(d).toFixed(4)+'</span></div>';
+  }
+  $('changeLog').innerHTML=html||'<span style="color:var(--sub)">변화 없음</span>';
+  $('kpiChanged').textContent=changed;
+}
+
+// ══ 학습 곡선 ══
+function renderCurve(){
+  var cv=$('curveCanvas'), W=cv.offsetWidth||380, H=110;
+  cv.width=W; cv.height=H;
+  var ctx=cv.getContext('2d'); ctx.clearRect(0,0,W,H);
+  var data=S.curve;
+  if(data.length<2){ctx.fillStyle='#8b949e';ctx.font='11px monospace';ctx.fillText('데이터 부족',10,H/2);return;}
+  var mx=Math.max.apply(null,data), mn=Math.min.apply(null,data)*0.98;
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(var i=0;i<=4;i++){var y=H-(i/4)*H;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.beginPath(); ctx.strokeStyle='#00ff88'; ctx.lineWidth=2;
+  data.forEach(function(v,i){
+    var x=i/(data.length-1)*W, y=H-((v-mn)/(mx-mn||1))*(H-6)-3;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  var lv=data[data.length-1], lx=W, ly=H-((lv-mn)/(mx-mn||1))*(H-6)-3;
+  ctx.beginPath(); ctx.arc(lx-1,ly,4,0,Math.PI*2); ctx.fillStyle='#00ff88'; ctx.fill();
+  ctx.fillStyle='#8b949e'; ctx.font='9px monospace'; ctx.textAlign='left';
+  ctx.fillText(mx.toFixed(1),2,10); ctx.fillText(mn.toFixed(1),2,H-4);
+}
+
+// ══ StatCache 렌더 ══
+function renderStat(history){
+  if(!history||!history.length||!CubeEngine._buildStatCache) return;
+  var stat=CubeEngine._buildStatCache(history,{items:45,history:history});
+  function sec(id,obj){
+    var arr=[]; for(var i=1;i<=45;i++) arr.push({n:i,v:obj[i]||0});
+    arr.sort(function(a,b){return b.v-a.v;});
+    $(id).innerHTML=arr.slice(0,10).map(function(x){
+      return '<div class="sg-c"><div class="sg-n">'+x.n+'</div><div class="sg-v">'+x.v+'</div></div>';
+    }).join('');
+  }
+  sec('statFreq',stat.freq); sec('statRecent',stat.recentFreq);
+  sec('statGap',stat.gap);   sec('statReHit',stat.reHit);
+}
+
+// ══ 추천 조합 ══
+function ballCls(n){return n<=10?'b1':n<=20?'b2':n<=30?'b3':n<=40?'b4':'b5';}
+function renderCombos(results,scores){
+  if(!results||!results.length) return;
+  var wrap=$('comboWrap'); wrap.innerHTML='';
+  results.forEach(function(combo,i){
+    var row=document.createElement('div'); row.className='combo-row';
+    var rk=document.createElement('div'); rk.className='cr'; rk.textContent='#'+(i+1);
+    row.appendChild(rk);
+    combo.forEach(function(n){
+      var b=document.createElement('div'); b.className='ball '+ballCls(n); b.textContent=n; row.appendChild(b);
     });
-    ctx.stroke();
+    var sc=document.createElement('div'); sc.className='cs';
+    sc.textContent=scores&&scores[i]?scores[i].toFixed(2):''; row.appendChild(sc);
+    wrap.appendChild(row);
+  });
+}
 
-    // 그라디언트 fill
-    var grad = ctx.createLinearGradient(0, pad.t, 0, pad.t+ch);
-    grad.addColorStop(0, 'rgba(0,230,118,.25)');
-    grad.addColorStop(1, 'rgba(0,230,118,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    scoreData.forEach(function(v, i) {
-        var x = pad.l + cw * i / (scoreData.length - 1);
-        var y = pad.t + ch * (1 - (v - min)/(max - min || 1));
-        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+// ══════════════════════════════════════════════════
+//  ★ 로또 웹과 동일한 loadSharedEngineState
+//    - 경로: lotto_history / shared_engine_state
+//    - probMap 키: n1~n45
+// ══════════════════════════════════════════════════
+async function loadSharedEngineState(){
+  try {
+    var snap = await DOC.get();
+    if(!snap.exists){ tlog('저장 데이터 없음 → 첫 학습 시작','tw'); return null; }
+    var data = snap.data();
+    tlog('학습 데이터 로드: iteration='+( data.iteration||0)+
+         ' | 출처='+(data.source||'-')+
+         ' | bestScore='+((data.bestScore||0).toFixed?data.bestScore.toFixed(2):'-'), 'ts');
+    return data;
+  } catch(e){ tlog('로드 실패: '+e.message,'te'); return null; }
+}
+
+// ══════════════════════════════════════════════════
+//  ★ 로또 웹과 동일한 restoreProbMap
+//    - 키 'n1'~'n45' → 숫자 키로 복원
+// ══════════════════════════════════════════════════
+function restoreProbMap(probMapStr){
+  if(!probMapStr) return null;
+  var probMap={};
+  Object.keys(probMapStr).forEach(function(k){
+    var num=parseInt(k.replace('n',''));
+    if(!isNaN(num)&&num>=1&&num<=45) probMap[num]=parseFloat(probMapStr[k]);
+  });
+  var keys=Object.keys(probMap).length;
+  if(keys===0) return null;
+  tlog('probMap 복원: '+keys+'개 번호','ti');
+  return probMap;
+}
+
+// ══════════════════════════════════════════════════
+//  ★ 로또 웹과 동일한 saveSharedEngineState
+//    - 트랜잭션 가중 평균 누적 병합
+//    - iteration 이 쌓일수록 기존 학습 가중치 우세
+//    - 키: n1~n45 (접두사 'n')
+// ══════════════════════════════════════════════════
+async function saveSharedEngineState(result, source){
+  try {
+    var engineVer = (typeof CubeEngine!=='undefined') ? CubeEngine.version : 'unknown';
+    var actualIteration = 0;
+
+    // ── 새 probMap 문자열화 (n 접두사) ──
+    var newProbMapStr = {};
+    Object.keys(result.probMap).forEach(function(k){
+      newProbMapStr['n'+k] = result.probMap[k];
     });
-    ctx.lineTo(pad.l+cw, pad.t+ch); ctx.lineTo(pad.l, pad.t+ch); ctx.closePath();
-    ctx.fill();
 
-    // 최신점 표시
-    var last = scoreData[scoreData.length-1];
-    var lx   = pad.l + cw;
-    var ly   = pad.t + ch * (1 - (last - min)/(max - min || 1));
-    ctx.beginPath(); ctx.arc(lx,ly,4,0,Math.PI*2);
-    ctx.fillStyle='#00e676'; ctx.fill();
-}
+    // ── 트랜잭션: 동시 접속 충돌 방지 + 가중 평균 누적 병합 ──
+    await db.runTransaction(function(tx){
+      return tx.get(DOC).then(function(snap){
+        var existing = snap.exists ? snap.data() : null;
+        var baseIter = existing ? (existing.iteration||0) : 0;
+        actualIteration = baseIter + 1;
 
-/* ══════════════════════════════════════
-   확률 히트맵
-══════════════════════════════════════ */
-function renderProbGrid(probMap) {
-    var grid  = $('probGrid');
-    grid.innerHTML = '';
-    var vals  = Object.values(probMap);
-    var max   = Math.max(...vals);
-    var min   = Math.min(...vals);
-    for (var n=1; n<=45; n++) {
-        var p    = probMap[n] || 0;
-        var norm = (p - min) / (max - min + 0.0001);
-        var r,g,b;
-        if (norm < 0.33)      { r=13+(norm/0.33)*25;    g=71+(norm/0.33)*20;  b=161+(norm/0.33)*30; }
-        else if (norm < 0.66) { var t=(norm-0.33)/0.33; r=38+t*0;   g=91+t*(212-91);  b=191+(t*(255-191)); }
-        else                  { var t=(norm-0.66)/0.34; r=0+t*0;    g=212+t*(230-212); b=255-(t*(255-118)); }
-        var bg   = 'rgb('+Math.round(r)+','+Math.round(g)+','+Math.round(b)+')';
-        var text = norm > 0.6 ? '#000' : '#fff';
-        var cell = document.createElement('div');
-        cell.className   = 'prob-cell';
-        cell.style.background = bg;
-        cell.style.color      = text;
-        cell.title = 'No.'+n+': '+(p*100).toFixed(2)+'%';
-        cell.textContent = n;
-        grid.appendChild(cell);
-    }
-}
-
-/* ══════════════════════════════════════
-   StatCache 바 차트 (탭별)
-══════════════════════════════════════ */
-var currentTab = 'freq';
-var latestStat = null;
-
-function switchTab(tab) {
-    currentTab = tab;
-    document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
-    event.target.classList.add('active');
-    if (latestStat) renderStatBars(latestStat, tab);
-}
-
-function renderStatBars(stat, tab) {
-    latestStat = stat;
-    var key    = tab === 'freq' ? 'freq' : tab === 'recent' ? 'recentFreq' : tab === 'gap' ? 'gap' : 'reHit';
-    var data   = stat[key];
-    var colors = { freq:'#00d4ff', recentFreq:'#00e676', gap:'#ffd740', reHit:'#ce93d8' };
-    var color  = colors[key] || '#00d4ff';
-
-    var entries = Object.keys(data).map(function(k){ return {n:+k, v:data[k]}; });
-    entries.sort(function(a,b){ return b.v - a.v; });
-    var top = entries.slice(0, 15);
-    var maxV = top[0] ? top[0].v : 1;
-
-    var html = '';
-    top.forEach(function(e) {
-        var pct = maxV > 0 ? (e.v / maxV * 100).toFixed(0) : 0;
-        html += '<div class="stat-item">'
-              + '<span class="stat-label">'+e.n+'</span>'
-              + '<div class="stat-bar-wrap"><div class="stat-bar" style="width:'+pct+'%;background:'+color+'"></div></div>'
-              + '<span class="stat-val">'+e.v+'</span></div>';
-    });
-    $('statBars').innerHTML = html || '<div style="color:var(--muted)">데이터 없음</div>';
-}
-
-/* ══════════════════════════════════════
-   ProbMap 비교 테이블
-══════════════════════════════════════ */
-function renderProbDiff(oldMap, newMap) {
-    if (!newMap) return;
-    var rows = [];
-    for (var i=1; i<=45; i++) {
-        var ov = oldMap ? (oldMap[i] || 0) : 0;
-        var nv = newMap[i] || 0;
-        var d  = nv - ov;
-        if (Math.abs(d) > 0.0001) rows.push({n:i, old:ov, nw:nv, d:d});
-    }
-    rows.sort(function(a,b){ return Math.abs(b.d)-Math.abs(a.d); });
-
-    var html = '<table class="cmp-table"><thead><tr><th>번호</th><th>이전</th><th>현재</th><th>변화</th></tr></thead><tbody>';
-    rows.slice(0,20).forEach(function(r) {
-        var cls = r.d>0 ? 'up' : 'down';
-        var icon = r.d>0 ? '▲' : '▼';
-        html += '<tr><td>No.'+r.n+'</td><td class="same">'+r.old.toFixed(4)+'</td>'
-              + '<td>'+r.nw.toFixed(4)+'</td>'
-              + '<td class="'+cls+'">'+icon+' '+Math.abs(r.d).toFixed(4)+'</td></tr>';
-    });
-    html += '</tbody></table>';
-    $('probDiffTable').innerHTML = rows.length ? html : '<div style="color:var(--muted);font-size:11px;">변화 없음</div>';
-}
-
-/* ══════════════════════════════════════
-   결과 조합 렌더링
-══════════════════════════════════════ */
-function ballColor(n) {
-    if (n < 10)  return 'b1';
-    if (n < 20)  return 'b10';
-    if (n < 30)  return 'b20';
-    if (n < 40)  return 'b30';
-    return 'b40';
-}
-
-function renderCombos(results, scores) {
-    var html = '';
-    results.forEach(function(combo, i) {
-        html += '<div class="combo-row">';
-        combo.forEach(function(n) {
-            html += '<div class="ball '+ballColor(n)+'">'+n+'</div>';
-        });
-        html += '<span class="score-badge">'+scores[i]+'점</span></div>';
-    });
-    $('resultCombos').innerHTML = html;
-}
-
-/* ══════════════════════════════════════
-   수렴 지표
-══════════════════════════════════════ */
-function renderConverge(scoreHistory) {
-    if (!scoreHistory || scoreHistory.length < 2) return;
-    var first = scoreHistory[0];
-    var last  = scoreHistory[scoreHistory.length-1];
-    var delta = last - first;
-    var improvements = scoreHistory.filter(function(v,i){ return i>0 && v > scoreHistory[i-1]; }).length;
-    var convRate = (improvements / (scoreHistory.length-1) * 100).toFixed(0);
-
-    var items = [
-        { label:'시작 점수',  val: first.toFixed(2),   bar:50, color:'#637085' },
-        { label:'최종 점수',  val: last.toFixed(2),    bar:Math.min(last/first*50,100), color:'#00e676' },
-        { label:'총 향상',    val: (delta>0?'+':'')+delta.toFixed(2), bar:Math.min(delta/last*100,100), color:'#ffd740' },
-        { label:'향상 라운드', val: improvements+'/'+( scoreHistory.length-1), bar:+convRate, color:'#00d4ff' },
-    ];
-
-    var html = '';
-    items.forEach(function(item) {
-        html += '<div class="stat-item">'
-              + '<span style="width:70px;font-size:10px;color:var(--muted)">'+item.label+'</span>'
-              + '<div class="stat-bar-wrap"><div class="stat-bar" style="width:'+Math.max(0,item.bar)+'%;background:'+item.color+'"></div></div>'
-              + '<span class="stat-val" style="color:'+item.color+'">'+item.val+'</span></div>';
-    });
-    $('convergeStat').innerHTML = html;
-}
-
-/* ══════════════════════════════════════
-   로그 추가
-══════════════════════════════════════ */
-function addLog(msg, type) {
-    var box = $('roundLog');
-    var div = document.createElement('div');
-    div.className = 'log-line ' + (type||'hold');
-    div.textContent = new Date().toLocaleTimeString('ko-KR',{hour12:false}) + ' ' + msg;
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-}
-
-/* ══════════════════════════════════════
-   Firebase 상태 패널
-══════════════════════════════════════ */
-function renderFbStatus(data) {
-    var html = '';
-    if (!data) { $('fbStatus').innerHTML='<div style="color:var(--muted)">저장된 데이터 없음</div>'; return; }
-    var items = [
-        { k:'Iteration',    v: data.iteration || 0 },
-        { k:'Pool 크기',    v: data.pool ? data.pool.length : 0 },
-        { k:'최고 점수',    v: data.bestScore ? data.bestScore.toFixed(2) : '-' },
-        { k:'저장 시각',    v: data.generatedAt ? (data.generatedAt.toDate ? data.generatedAt.toDate().toLocaleString('ko-KR') : data.generatedAt) : '-' },
-    ];
-    items.forEach(function(i) {
-        html += '<div class="stat-item"><span style="flex:1;color:var(--muted)">'+i.k+'</span>'
-              + '<span style="color:var(--primary);font-weight:700">'+i.v+'</span></div>';
-    });
-    $('fbStatus').innerHTML = html;
-}
-
-/* ══════════════════════════════════════
-   메인 실행
-══════════════════════════════════════ */
-$('runBtn').onclick = async function() {
-    var btn = $('runBtn');
-    btn.disabled = true;
-    scoreData = [];
-    $('roundLog').innerHTML = '';
-    $('probGrid').innerHTML = '';
-    $('resultCombos').innerHTML = '<div style="color:var(--muted)">진행 중...</div>';
-
-    var $fill  = $('progFill');
-    $fill.classList.add('active');
-
-    var setStatus = function(msg) {
-        $('engineStatus').textContent = msg;
-        addLog(msg);
-    };
-
-    try {
-        /* [1] Firebase 로드 */
-        setStatus('⬇ Firebase 데이터 로드 중...');
-        var prevData   = null;
-        var snap       = await DOC.get();
-        if (snap.exists) {
-            prevData = snap.data();
-            if (prevData.pool) prevData.pool = prevData.pool.map(function(p){ return p.items; });
-            $('iterBadge').textContent = 'Iter: ' + (prevData.iteration || 0);
-            renderFbStatus(prevData);
-            addLog('✓ 로드 완료 — pool:' + (prevData.pool ? prevData.pool.length : 0) + '개', 'up');
+        // iteration 이 쌓일수록 기존 가중치가 높아짐
+        // 신규: weight=1, 기존: weight=min(baseIter, 50)
+        var mergedProbMap = {};
+        if(existing && existing.probMap && baseIter > 0){
+          var w_old   = Math.min(baseIter, 50);
+          var w_new   = 1;
+          var w_total = w_old + w_new;
+          for(var n=1;n<=45;n++){
+            var key    = 'n'+n;
+            var oldVal = existing.probMap[key]!=null ? parseFloat(existing.probMap[key])
+                       : (newProbMapStr[key]!=null ? parseFloat(newProbMapStr[key]) : 0);
+            var newVal = newProbMapStr[key]!=null ? parseFloat(newProbMapStr[key]) : oldVal;
+            mergedProbMap[key] = (oldVal*w_old + newVal*w_new) / w_total;
+          }
+          tlog('병합: iter '+baseIter+'→'+actualIteration+
+               ' | 기존비중 '+(w_old/w_total*100).toFixed(0)+'%', 'tw');
         } else {
-            addLog('신규 세션 — 저장 데이터 없음', 'hold');
-            renderFbStatus(null);
+          mergedProbMap = newProbMapStr;
+          tlog('첫 학습 저장 (신규 probMap)', 'ts');
         }
 
-        var prevProbMap = prevData ? prevData.probMap : null;
+        var poolToSave = result.fullPool.slice(0,100).map(function(c){return{items:c};});
 
-        /* [2] 엔진 실행 */
-        setStatus('⚙ 하이브리드 진화 중...');
-        var result = await CubeEngine.generate({
-            items  : 45,
-            pick   : 6,
-            rounds : 50,
-            poolSize: 2500,
-            externalProbMap: prevData ? prevData.probMap : null,
-            initialPool    : prevData ? prevData.pool    : null,
+        tx.set(DOC, {
+          probMap      : mergedProbMap,
+          pool         : poolToSave,
+          iteration    : actualIteration,
+          engineVersion: engineVer,
+          savedAt      : firebase.firestore.FieldValue.serverTimestamp(),
+          bestScore    : result.scores[0]||0,
+          source       : source||'monitor'
+        });
+      });
+    });
 
-            onProgress: function(pct, stats) {
-                $fill.style.width = pct + '%';
-                $('progPct').textContent  = pct + '%';
-                $('progPhase').textContent = stats.message || stats.phase || '';
+    return actualIteration;
+  } catch(e){ tlog('저장 실패: '+e.message,'te'); return false; }
+}
 
-                if (stats.phase === 'ml_done' && stats.statCache) {
-                    renderStatBars(stats.statCache, currentTab);
-                    addLog('✓ StatCache 구성 완료', 'up');
-                }
+// ══ 상태 표시 공통 함수 ══
+function applyLoadedState(data){
+  if(!data) return;
+  var probMap = restoreProbMap(data.probMap);
+  S.prevMap  = probMap;
+  S.iter     = data.iteration || 0;
+  S.prevBest = data.bestScore || 0;
+  S.source   = data.source || '-';
+  $('kpiIter').textContent   = S.iter;
+  $('iterCount').textContent  = S.iter;
+  $('kpiPool').textContent    = data.pool ? data.pool.length : 0;
+  $('kpiBest').textContent    = data.bestScore ? data.bestScore.toFixed(2) : '-';
+  $('lastSource').textContent = S.source;
+  if(probMap){ renderHM(probMap); renderBar(probMap); renderCL(null,probMap); }
+}
 
-                if (stats.phase === 'evolving') {
-                    $('kpiRound').innerHTML   = stats.round + '<span style="font-size:14px;color:var(--muted)">/'+stats.totalRounds+'</span>';
-                    $('kpiBest').textContent  = stats.bestScore ? stats.bestScore.toFixed(1) : '-';
-                    $('kpiPool').textContent  = stats.poolSize || '-';
-                    $('kpiElapsed').textContent = stats.elapsed ? (stats.elapsed/1000).toFixed(1)+'s' : '-';
-                    $('kpiImprove').textContent = stats.improvement || '-';
+// ══ 메인 실행 ══
+async function runEngine(){
+  if(S.running) return;
+  S.running=true; S.curve=[];
+  $('btnRun').disabled=true; setChip('run');
+  tlog('═══════ 학습 실행 ═══════','ts');
+  tlog('경로: '+SHARED_COL+'/'+SHARED_DOC,'ti');
 
-                    if (stats.scoreHistory && stats.scoreHistory.length) {
-                        scoreData = stats.scoreHistory;
-                        drawScoreChart();
-                        renderConverge(scoreData);
-                    }
+  try {
+    // 1. 로또 웹과 동일 경로에서 로드
+    var prevData = await loadSharedEngineState();
+    var prevIter = prevData ? (prevData.iteration||0) : 0;
+    var prevPool = prevData && prevData.pool
+      ? prevData.pool.map(function(p){return p.items!==undefined?p.items:p;})
+      : null;
+    var prevProbMap = prevData ? restoreProbMap(prevData.probMap) : null;
 
-                    if (stats.probMap) {
-                        renderProbGrid(stats.probMap);
-                        if (stats.round % 5 === 0) {
-                            renderProbDiff(prevProbMap, stats.probMap);
-                        }
-                    }
+    applyLoadedState(prevData);
 
-                    var isUp = stats.improvement && stats.improvement.indexOf('향상') >= 0;
-                    if (isUp) addLog('R'+stats.round+' ▲ '+stats.bestScore.toFixed(2), 'up');
-                    else if (stats.round % 10 === 0) addLog('R'+stats.round+' → '+stats.bestScore.toFixed(2), 'hold');
-                }
-            },
-
-            onRound: function(rn, best) {
-                // onProgress에서 처리
+    // 2. 학습 실행
+    var cfg = CubeEngine.withPreset('lotto645',{
+      rounds    : 50,
+      externalProbMap: prevProbMap,
+      initialPool    : prevPool,
+      onProgress: function(pct,stats){
+        $('mainBar').style.width=pct+'%';
+        $('pctText').textContent=pct+'%';
+        if(stats){
+          if(stats.message) $('phaseText').textContent=stats.message;
+          if(stats.round!==undefined){
+            $('roundNow').textContent=stats.round;
+            if(stats.elapsed) $('elapsed').textContent=(Math.floor(stats.elapsed/1000))+'s';
+            if(stats.poolSize) $('poolNow').textContent=stats.poolSize;
+            if(stats.bestScore&&stats.bestScore>0){
+              $('kpiBest').textContent=stats.bestScore.toFixed(2);
+              S.curve.push(stats.bestScore); renderCurve();
             }
-        });
+            tickTL(stats.round);
+          }
+        }
+      },
+      onRound: function(round,best){
+        tlog('Round '+round+' — best:'+best.toFixed(2));
+      }
+    });
 
-        /* [3] 최종 렌더링 */
-        renderProbGrid(result.probMap);
-        renderProbDiff(prevProbMap, result.probMap);
-        renderCombos(result.results, result.scores);
-        renderConverge(result.scoreHistory);
-        if (result.stat) renderStatBars(result.stat, currentTab);
-        scoreData = result.scoreHistory;
-        drawScoreChart();
+    initTL(cfg.rounds||50);
+    tlog('엔진 가동 — rounds:'+cfg.rounds+', externalProbMap:'+(prevProbMap?'있음':'없음'),'ti');
 
-        $('kpiBest').textContent = result.scores[0] ? result.scores[0].toFixed(1) : '-';
-        $('kpiElapsed').textContent = (result.meta.elapsed/1000).toFixed(1)+'s';
-        $('kpiImprove').textContent = '✅ 완료';
+    var result = await CubeEngine.generate(cfg);
 
-        addLog('✅ 진화 완료 — '+result.meta.elapsed+'ms / 후보:'+result.fullPool.length+'개', 'up');
+    // 3. 결과 처리
+    S.curMap = result.probMap;
+    var nb=result.scores[0], diff=nb-S.prevBest;
+    $('kpiBest').textContent=nb.toFixed(2);
+    $('kpiBestDiff').innerHTML=diff>0?'<span class="up">▲ '+diff.toFixed(2)+' 향상</span>':
+      diff<0?'<span class="dn">▼ '+Math.abs(diff).toFixed(2)+' 감소</span>':'<span class="eq">→ 유지</span>';
+    S.prevBest=nb;
+    $('kpiPool').textContent=result.fullPool.length;
+    $('kpiIter').textContent=prevIter+1; $('iterCount').textContent=prevIter+1;
+    $('lastRun').textContent=new Date().toLocaleTimeString('ko-KR');
+    $('lastSource').textContent='monitor';
 
-        /* [4] Firebase 저장 */
-        setStatus('⬆ Firebase 저장 중...');
-        var formatted = result.fullPool.slice(0,100).map(function(c){ return {items:c}; });
-        await DOC.set({
-            probMap    : result.probMap,
-            pool       : formatted,
-            iteration  : ((prevData ? prevData.iteration : 0) || 0) + 1,
-            generatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            bestScore  : result.scores[0] || 0
-        });
-        var newIter = ((prevData ? prevData.iteration : 0) || 0) + 1;
-        $('iterBadge').textContent = 'Iter: ' + newIter;
-        renderFbStatus({ iteration: newIter, pool: formatted, bestScore: result.scores[0], generatedAt: new Date() });
-        addLog('✅ Firebase 저장 완료 — Iter '+newIter, 'up');
-        setStatus('✅ 모든 작업 완료');
+    renderHM(result.probMap); renderBar(result.probMap);
+    renderCL(prevProbMap, result.probMap);
+    renderCombos(result.results, result.scores);
+    if(cfg.history) renderStat(cfg.history);
 
-    } catch(err) {
-        console.error(err);
-        addLog('❌ 오류: ' + err.message, 'err');
-        setStatus('❌ 오류 발생');
-    } finally {
-        btn.disabled = false;
-        $fill.classList.remove('active');
-    }
+    tlog('완료 — best:'+nb.toFixed(2)+' elapsed:'+result.meta.elapsed+'ms','ts');
+
+    // 4. 로또 웹과 동일 경로에 저장
+    tlog('Firebase 저장 중 (lotto_history/shared_engine_state)...','ti');
+    var savedIter = await saveSharedEngineState(result,'monitor');
+    tlog('저장 완료 ✅ iteration:'+savedIter+' (로또 웹 공유)','ts');
+
+    setChip('done'); $('phaseText').textContent='완료!';
+
+  } catch(e){
+    tlog('오류: '+e.message,'te'); setChip('err');
+    console.error(e);
+  } finally {
+    S.running=false; $('btnRun').disabled=false;
+  }
+}
+
+// ══ 버튼 ══
+$('btnRun').onclick = runEngine;
+
+$('btnLoad').onclick = async function(){
+  tlog('상태 불러오는 중...','ti');
+  var data = await loadSharedEngineState();
+  if(!data){ tlog('데이터 없음','tw'); return; }
+  applyLoadedState(data);
+  setChip('done');
+  tlog('불러오기 완료 (iter:'+S.iter+', source:'+S.source+')','ts');
 };
 
-/* ══════════════════════════════════════
-   초기 히트맵 (빈 상태)
-══════════════════════════════════════ */
-(function initGrid() {
-    var g = $('probGrid');
-    for (var i=1;i<=45;i++) {
-        var c = document.createElement('div');
-        c.className='prob-cell';
-        c.style.background='#1e2836';
-        c.style.color='#637085';
-        c.textContent=i;
-        g.appendChild(c);
-    }
-    drawScoreChart();
-})();
+$('btnReset').onclick = async function(){
+  if(!confirm('Firebase 학습 데이터를 초기화합니까?\n⚠️ 로또 웹의 학습 데이터도 사라집니다.\n이 작업은 되돌릴 수 없습니다.')) return;
+  try{
+    await DOC.delete();
+    S={iter:0,prevMap:null,curMap:null,curve:[],prevBest:0,running:false,source:'-'};
+    ['kpiIter','kpiPool','kpiChanged'].forEach(function(id){$(id).textContent=0;});
+    $('kpiBest').textContent='-'; $('kpiBestDiff').innerHTML='';
+    $('iterCount').textContent=0; $('lastRun').textContent='-'; $('lastSource').textContent='-';
+    $('heatmap').innerHTML=''; $('barChart').innerHTML='';
+    $('changeLog').innerHTML='<span style="color:var(--sub)">대기 중...</span>';
+    $('comboWrap').innerHTML='<span style="color:var(--sub);font-size:12px">학습 완료 후 표시됩니다</span>';
+    $('mainBar').style.width='0%'; $('pctText').textContent='0%';
+    $('phaseText').textContent='대기 중'; $('roundNow').textContent='0';
+    ['statFreq','statRecent','statGap','statReHit'].forEach(function(id){$(id).innerHTML='';});
+    renderCurve(); setChip('idle');
+    tlog('초기화 완료 (lotto_history/shared_engine_state 삭제)','tw');
+  }catch(e){tlog('초기화 실패: '+e.message,'te');}
+};
 
-window.addEventListener('resize', drawScoreChart);
+// ══ 초기 자동 로드 ══
+(async function(){
+  tlog('초기 상태 확인 중...','ti');
+  tlog('경로: '+SHARED_COL+'/'+SHARED_DOC,'ti');
+  var data = await loadSharedEngineState();
+  if(data){
+    applyLoadedState(data);
+    setChip('done');
+    tlog('기존 학습 상태 로드 완료 (iter:'+S.iter+')','ts');
+  } else {
+    tlog('저장 데이터 없음 — 학습 실행 버튼으로 시작하세요','tw');
+  }
+  if(typeof CubeEngine!=='undefined'&&CubeEngine.version)
+    $('verBadge').textContent='v'+CubeEngine.version;
+})();
 </script>
 </body>
 </html>
