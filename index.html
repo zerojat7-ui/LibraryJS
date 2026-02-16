@@ -92,8 +92,11 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 .pool-ctrl{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .pool-label{font-size:12px;color:var(--sub);white-space:nowrap;flex-shrink:0}
 .pool-slider{flex:1;min-width:160px;-webkit-appearance:none;height:5px;border-radius:3px;background:linear-gradient(to right,var(--green) 0%,var(--green) var(--pct,10%),#21262d var(--pct,10%));outline:none;cursor:pointer}
+.pool-slider:disabled{opacity:0.5;cursor:not-allowed}
 .pool-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--green);border:2px solid #0d1117;box-shadow:0 0 5px var(--green);cursor:pointer}
+.pool-slider:disabled::-webkit-slider-thumb{cursor:not-allowed;opacity:0.5}
 .pool-slider::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--green);border:2px solid #0d1117;cursor:pointer}
+.pool-slider:disabled::-moz-range-thumb{cursor:not-allowed;opacity:0.5}
 .pool-val{font-size:16px;font-weight:bold;color:var(--green);min-width:54px;text-align:right}
 .pool-marks{display:flex;justify-content:space-between;font-size:9px;color:var(--sub);margin-top:2px;flex:1;min-width:160px;padding:0 8px}
 
@@ -170,8 +173,6 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 <!-- 버튼 -->
 <div class="btn-row">
   <button class="btn btn-run"   id="btnRun">▶ 학습 실행 (로또 웹과 공유)</button>
-  <button class="btn btn-load"  id="btnLoad">📥 상태 불러오기</button>
-  <button class="btn btn-reset" id="btnReset">🗑 초기화</button>
 </div>
 
 <!-- KPI -->
@@ -575,13 +576,26 @@ function applyLoadedState(data){
 // ══ 메인 실행 ══
 async function runEngine(){
   if(S.running) return;
+  
+  // Firebase 연결 체크
+  try {
+    await db.collection(SHARED_COL).limit(1).get();
+  } catch(e) {
+    alert('Database에 연결이 안돼 테스트가 불가능 합니다');
+    tlog('Firebase 연결 실패: '+e.message,'te');
+    setChip('err');
+    return;
+  }
+  
   S.running=true; S.curve=[];
   $('btnRun').disabled=true; setChip('run');
+  
+  // poolSize 슬라이더 값 읽기 및 비활성화
+  var poolSize = parseInt($('poolSlider').value) || 2500;
+  $('poolSlider').disabled = true;
+  
   tlog('═══════ 학습 실행 ═══════','ts');
   tlog('경로: '+SHARED_COL+'/'+SHARED_DOC,'ti');
-
-  // poolSize 슬라이더 값 읽기
-  var poolSize = parseInt($('poolSlider').value) || 2500;
   tlog('Pool Size: '+poolSize.toLocaleString(),'ti');
 
   try {
@@ -670,40 +684,14 @@ async function runEngine(){
     tlog('오류: '+e.message,'te'); setChip('err');
     console.error(e);
   } finally {
-    S.running=false; $('btnRun').disabled=false;
+    S.running=false; 
+    $('btnRun').disabled=false;
+    $('poolSlider').disabled = false;
   }
 }
 
 // ══ 버튼 ══
 $('btnRun').onclick = runEngine;
-
-$('btnLoad').onclick = async function(){
-  tlog('상태 불러오는 중...','ti');
-  var data = await loadSharedEngineState();
-  if(!data){ tlog('데이터 없음','tw'); return; }
-  applyLoadedState(data);
-  setChip('done');
-  tlog('불러오기 완료 (iter:'+S.iter+', source:'+S.source+')','ts');
-};
-
-$('btnReset').onclick = async function(){
-  if(!confirm('Firebase 학습 데이터를 초기화합니까?\n⚠️ 로또 웹의 학습 데이터도 사라집니다.\n이 작업은 되돌릴 수 없습니다.')) return;
-  try{
-    await DOC.delete();
-    S={iter:0,prevMap:null,curMap:null,curve:[],prevBest:0,running:false,source:'-'};
-    ['kpiIter','kpiPool','kpiChanged'].forEach(function(id){$(id).textContent=0;});
-    $('kpiBest').textContent='-'; $('kpiBestDiff').innerHTML='';
-    $('iterCount').textContent=0; $('lastRun').textContent='-'; $('lastSource').textContent='-';
-    $('heatmap').innerHTML=''; $('barChart').innerHTML='';
-    $('changeLog').innerHTML='<span style="color:var(--sub)">대기 중...</span>';
-    $('comboWrap').innerHTML='<span style="color:var(--sub);font-size:12px">학습 완료 후 표시됩니다</span>';
-    $('mainBar').style.width='0%'; $('pctText').textContent='0%';
-    $('phaseText').textContent='대기 중'; $('roundNow').textContent='0';
-    ['statFreq','statRecent','statGap','statReHit'].forEach(function(id){$(id).innerHTML='';});
-    renderCurve(); setChip('idle');
-    tlog('초기화 완료 (lotto_history/shared_engine_state 삭제)','tw');
-  }catch(e){tlog('초기화 실패: '+e.message,'te');}
-};
 
 // ══ 초기 자동 로드 ══
 (async function(){

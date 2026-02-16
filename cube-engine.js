@@ -1,13 +1,14 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.2.1  (Universal)             ║
+ * ║              CubeEngine  v2.2.2  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.1  ║
+ * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.2  ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
  * v2.2.0: colorZone + bonusHistory 학습 / scoreCombo 색상균형 점수
  * v2.2.1: 라운드별 probMap 동적갱신 제거 (번호 쏠림 버그 수정)
+ * v2.2.2: 랜덤 가중치(0.95~1.05) 적용 / 기당첨 완전일치 제외
  */
 
 'use strict';
@@ -270,7 +271,9 @@ function buildMLProbabilities(cfg, validPool, stat) {
    큐브 진화 (단일 번호)
 ───────────────────────────────────────── */
 async function evolveHybridCube(itemNum, initialProb, cfg) {
-    var adaptiveProb  = initialProb;
+    // 라운드별 랜덤 가중치 (0.95~1.05)
+    var randomBoost = 0.95 + Math.random() * 0.10;
+    var adaptiveProb  = initialProb * randomBoost;
     var score = 0, success = 0, total = 0;
     var start = performance.now();
     var improvementRate = 0;
@@ -454,6 +457,11 @@ async function generate(options) {
     var dedupeThreshold  = Math.max(3, cfg.pick - 1);
     for (var ri = 0; ri < pool.length && topResults.length < cfg.topN; ri++) {
         var candidate = pool[ri];
+        
+        // 기당첨 데이터와 완전 일치(6개) 체크
+        var isExactMatch = historySet.has(JSON.stringify(candidate.items));
+        if (isExactMatch) continue;
+        
         var isDup = topResults.some(function(tr) {
             return candidate.items.filter(function(n) { return tr.items.indexOf(n) >= 0; }).length >= dedupeThreshold;
         });
@@ -478,7 +486,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.2.1'
+            version  : '2.2.2'
         }
     };
 
@@ -494,7 +502,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.2.1',
+    version  : '2.2.2',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
