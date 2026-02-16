@@ -424,12 +424,12 @@ function renderCurve(){
 
 // ══ StatCache 렌더 ══
 function renderStat(history){
-  if(!history||!history.length||!CubeEngine._buildStatCache) return;
+  if(!history||!history.length||!CubeEngine.buildStatCache) return;
   // history가 {numbers:[]} 형태면 2D 배열로 변환
   var nums = history[0] && history[0].numbers
     ? history.map(function(d){ return d.numbers; })
     : history;
-  var stat=CubeEngine._buildStatCache(nums,{items:45,history:nums});
+  var stat=CubeEngine.buildStatCache(nums,{items:45,recentWindow:30,history:nums});
   function sec(id,obj){
     var arr=[]; for(var i=1;i<=45;i++) arr.push({n:i,v:obj[i]||0});
     arr.sort(function(a,b){return b.v-a.v;});
