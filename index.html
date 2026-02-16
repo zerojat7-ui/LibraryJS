@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CubeEngine v2.1.0 — 학습 모니터</title>
+<title>CubeEngine v2.2.1 — 학습 모니터</title>
 <style>
 :root {
   --bg:#0d1117; --card:#161b22; --border:#30363d;
@@ -173,6 +173,63 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 <!-- 버튼 -->
 <div class="btn-row">
   <button class="btn btn-run"   id="btnRun">▶ 학습 실행 (로또 웹과 공유)</button>
+  <button class="btn" id="btnBacktest" style="background:#1f4068;color:#58a6ff;border:1px solid #58a6ff;">🔬 백테스팅 실행</button>
+</div>
+
+<!-- 백테스팅 패널 -->
+<div id="btPanel" style="display:none;margin-bottom:12px;">
+  <div class="card" style="border-color:#1f4068;">
+    <div class="card-ttl"><div class="dot db"></div>백테스팅 — 실제 당첨 검증 학습 (900회 초기학습 → 901~현재 피드백)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:bold;color:#58a6ff;" id="btCurDraw">-</div>
+        <div style="font-size:10px;color:var(--sub)">현재 회차</div>
+      </div>
+      <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:bold;color:#00ff88;" id="btHitRate">-</div>
+        <div style="font-size:10px;color:var(--sub)">평균 적중 번호수</div>
+      </div>
+      <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:bold;color:#f5a623;" id="btProgress">0%</div>
+        <div style="font-size:10px;color:var(--sub)">진행률</div>
+      </div>
+      <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:20px;font-weight:bold;color:#a371f7;" id="btBestHit">-</div>
+        <div style="font-size:10px;color:var(--sub)">최고 적중 수</div>
+      </div>
+    </div>
+    <!-- 진행바 -->
+    <div style="background:#21262d;border-radius:4px;height:8px;margin-bottom:8px;overflow:hidden;">
+      <div id="btBar" style="height:100%;background:linear-gradient(90deg,#58a6ff,#00ff88);width:0%;transition:width .3s;border-radius:4px;"></div>
+    </div>
+    <!-- 등수 통계 -->
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="background:#1a1a2e;border-radius:6px;padding:6px 10px;text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:bold;color:#ff6b6b;" id="bt6">0</div>
+        <div style="font-size:10px;color:var(--sub)">6개 일치 (1등)</div>
+      </div>
+      <div style="background:#1a1a2e;border-radius:6px;padding:6px 10px;text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:bold;color:#f5a623;" id="bt5">0</div>
+        <div style="font-size:10px;color:var(--sub)">5개 일치 (2~3등)</div>
+      </div>
+      <div style="background:#1a1a2e;border-radius:6px;padding:6px 10px;text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:bold;color:#58a6ff;" id="bt4">0</div>
+        <div style="font-size:10px;color:var(--sub)">4개 일치 (4등)</div>
+      </div>
+      <div style="background:#1a1a2e;border-radius:6px;padding:6px 10px;text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:bold;color:#00ff88;" id="bt3">0</div>
+        <div style="font-size:10px;color:var(--sub)">3개 일치 (5등)</div>
+      </div>
+      <div style="background:#1a1a2e;border-radius:6px;padding:6px 10px;text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:bold;color:var(--sub);" id="bt2">0</div>
+        <div style="font-size:10px;color:var(--sub)">2개 이하</div>
+      </div>
+    </div>
+    <!-- 상태 메시지 -->
+    <div id="btStatus" style="font-size:12px;color:var(--sub);padding:6px 0;">대기 중...</div>
+    <!-- 최근 결과 로그 -->
+    <div id="btLog" style="max-height:120px;overflow-y:auto;font-size:11px;font-family:monospace;background:#0d1117;border-radius:6px;padding:8px;margin-top:8px;"></div>
+  </div>
 </div>
 
 <!-- KPI -->
@@ -247,7 +304,7 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
   </div>
   <div class="card">
     <div class="card-ttl"><div class="dot db"></div>실시간 로그</div>
-    <div class="term" id="terminal"><span class="ti">[시스템] CubeEngine v2.1.0 준비 완료</span></div>
+    <div class="term" id="terminal"><span class="ti">[시스템] CubeEngine v2.2.1 준비 완료</span></div>
   </div>
 </div>
 
@@ -321,11 +378,13 @@ async function loadLottoHistory(){
       tlog('당첨 히스토리: draws 필드 없음 또는 빈값','tw');
       return [];
     }
-    var nums = data.draws.map(function(d){ return d.numbers; }).filter(function(n){ return n&&n.length===6; });
+    var draws = data.draws.filter(function(d){ return d.numbers&&d.numbers.length===6; });
+    var nums  = draws.map(function(d){ return d.numbers; });
+    var bonus = draws.map(function(d){ return d.bonus; }).filter(function(b){ return b&&b>=1&&b<=45; });
     statusEl.className = 'path-match';
-    statusEl.textContent = '✅ '+nums.length+'회차 로드 완료';
-    tlog('✅ 당첨 히스토리 로드: '+nums.length+'회차 (로또 웹 공유 경로)','ts');
-    return nums;
+    statusEl.textContent = '✅ '+nums.length+'회차 로드 완료 (보너스: '+bonus.length+'개)';
+    tlog('✅ 당첨 히스토리 로드: '+nums.length+'회차 | 보너스: '+bonus.length+'개','ts');
+    return { nums: nums, bonus: bonus, draws: draws };
   } catch(e){
     statusEl.className = 'path-mismatch';
     statusEl.textContent = '❌ 로드 실패';
@@ -601,10 +660,13 @@ async function runEngine(){
   try {
     // 1. 로또 웹 당첨 히스토리 먼저 로드 (학습에 사용)
     $('phaseText').textContent = '당첨 데이터 로딩 중...';
-    var historyNums = await loadLottoHistory();
+    var _lh = await loadLottoHistory();
+    var historyNums = Array.isArray(_lh) ? _lh : (_lh.nums || []);
+    var bonusNums   = Array.isArray(_lh) ? [] : (_lh.bonus || []);
+    var allDraws    = Array.isArray(_lh) ? [] : (_lh.draws || []);
     S.historyNums = historyNums;
     if(historyNums.length){
-      tlog('학습 데이터: '+historyNums.length+'회차 → 엔진 전달','ts');
+      tlog('학습 데이터: '+historyNums.length+'회차 | 보너스: '+bonusNums.length+'개 → 엔진 전달','ts');
     } else {
       tlog('히스토리 없음 — 순수 진화 모드로 실행','tw');
     }
@@ -623,6 +685,8 @@ async function runEngine(){
     // 3. 학습 실행
     var cfg = CubeEngine.withPreset('lotto645',{
       history        : historyNums.length ? historyNums : null,
+      bonusHistory   : bonusNums.length > 0 ? bonusNums : null,
+      colorZoneWeight: 0.20,
       rounds         : 50,
       poolSize       : poolSize,
       externalProbMap: prevProbMap,
@@ -692,6 +756,217 @@ async function runEngine(){
 
 // ══ 버튼 ══
 $('btnRun').onclick = runEngine;
+// ══════════════════════════════════════════════════
+//  백테스팅 엔진
+//  1~TRAIN_UNTIL 회차로 초기학습
+//  TRAIN_UNTIL+1 ~ 마지막 회차: 예측 → 비교 → probMap 피드백
+//  최종 probMap → shared_engine_state 저장 (로또 웹 반영)
+// ══════════════════════════════════════════════════
+var BT = {
+  running: false,
+  stats: { hit6:0, hit5:0, hit4:0, hit3:0, hit2:0, totalHits:0, count:0 }
+};
+
+function btLog(msg, color) {
+  var el = $('btLog');
+  var div = document.createElement('div');
+  div.style.color = color || '#8b949e';
+  div.textContent = msg;
+  el.insertBefore(div, el.firstChild);
+  if(el.children.length > 100) el.removeChild(el.lastChild);
+}
+
+function btUpdateStats() {
+  var s = BT.stats;
+  $('bt6').textContent = s.hit6;
+  $('bt5').textContent = s.hit5;
+  $('bt4').textContent = s.hit4;
+  $('bt3').textContent = s.hit3;
+  $('bt2').textContent = s.hit2;
+  if(s.count > 0) {
+    $('btHitRate').textContent = (s.totalHits / s.count).toFixed(2) + '개';
+    var best = s.hit6>0?6:s.hit5>0?5:s.hit4>0?4:s.hit3>0?3:2;
+    $('btBestHit').textContent = best + '개';
+  }
+}
+
+// 예측 결과와 실제 당첨 비교 후 probMap 보정
+function btFeedback(probMap, predicted, actual, bonus) {
+  var hitCount = 0;
+  predicted.forEach(function(n){ if(actual.indexOf(n)>=0) hitCount++; });
+
+  // 맞은 번호는 확률 강화, 틀린 번호는 약화
+  var reinforceRate = 0.08;  // 맞으면 +8%
+  var penaltyRate   = 0.03;  // 틀리면 -3%
+
+  for(var n=1; n<=45; n++) {
+    var inPredicted = predicted.indexOf(n) >= 0;
+    var inActual    = actual.indexOf(n) >= 0;
+    var isBonus     = (n === bonus);
+
+    if(inPredicted && inActual) {
+      // 예측O 실제O → 강화
+      probMap[n] = Math.min((probMap[n]||0.1) * (1 + reinforceRate), 0.95);
+    } else if(inPredicted && !inActual) {
+      // 예측O 실제X → 약화
+      probMap[n] = Math.max((probMap[n]||0.1) * (1 - penaltyRate), 0.01);
+    } else if(!inPredicted && inActual) {
+      // 예측X 실제O → 약간 강화 (놓쳤으니 다음엔 포함)
+      probMap[n] = Math.min((probMap[n]||0.1) * (1 + reinforceRate * 0.5), 0.95);
+    }
+    // 보너스 번호도 약간 강화
+    if(isBonus) {
+      probMap[n] = Math.min((probMap[n]||0.1) * 1.03, 0.95);
+    }
+  }
+  // 정규화: 합계를 1로
+  var sum = 0;
+  for(var m=1; m<=45; m++) sum += (probMap[m]||0);
+  if(sum > 0) for(var m=1; m<=45; m++) probMap[m] = (probMap[m]||0) / sum * 0.5;
+
+  return hitCount;
+}
+
+async function runBacktest() {
+  if(BT.running) return;
+
+  // 데이터 로드
+  $('btStatus').textContent = '당첨 데이터 로딩 중...';
+  var _lh = await loadLottoHistory();
+  var allDraws = Array.isArray(_lh) ? [] : (_lh.draws || []);
+
+  if(allDraws.length < 100) {
+    $('btStatus').textContent = '❌ 데이터 부족 (최소 100회차 필요)';
+    return;
+  }
+
+  var TRAIN_UNTIL = Math.min(900, Math.floor(allDraws.length * 0.75));
+  var testDraws   = allDraws.slice(TRAIN_UNTIL);
+  var trainDraws  = allDraws.slice(0, TRAIN_UNTIL);
+
+  if(testDraws.length === 0) {
+    $('btStatus').textContent = '❌ 테스트 데이터 없음';
+    return;
+  }
+
+  BT.running = true;
+  BT.stats = { hit6:0, hit5:0, hit4:0, hit3:0, hit2:0, totalHits:0, count:0 };
+  $('btPanel').style.display = 'block';
+  $('btnBacktest').disabled = true;
+  $('btnRun').disabled = true;
+  $('btLog').innerHTML = '';
+
+  tlog('🔬 백테스팅 시작 — 초기학습: '+TRAIN_UNTIL+'회차 | 테스트: '+testDraws.length+'회차','ts');
+  $('btStatus').textContent = '① 초기 학습 중 (1~'+TRAIN_UNTIL+'회차)...';
+
+  try {
+    // ① 초기 학습: 1~TRAIN_UNTIL 로 엔진 실행
+    var trainNums  = trainDraws.map(function(d){ return d.numbers; });
+    var trainBonus = trainDraws.map(function(d){ return d.bonus; }).filter(function(b){ return b&&b>=1&&b<=45; });
+
+    var initResult = await CubeEngine.generate(
+      CubeEngine.withPreset('turbo', {
+        history        : trainNums,
+        bonusHistory   : trainBonus.length > 0 ? trainBonus : null,
+        colorZoneWeight: 0.20,
+        topN           : 5,
+        rounds         : 30
+      })
+    );
+
+    // probMap을 변경 가능한 객체로 복사
+    var currentProbMap = {};
+    for(var n=1; n<=45; n++) currentProbMap[n] = initResult.probMap[n] || 0.1;
+
+    tlog('✅ 초기 학습 완료 — bestScore: '+initResult.scores[0].toFixed(2),'ts');
+    btLog('초기학습 완료 ('+TRAIN_UNTIL+'회차) best:'+initResult.scores[0].toFixed(2), '#00ff88');
+
+    // ② 901~1211회차: 예측 → 비교 → 피드백 루프
+    $('btStatus').textContent = '② 검증 학습 진행 중...';
+
+    for(var ti=0; ti<testDraws.length; ti++) {
+      var draw       = testDraws[ti];
+      var actual     = draw.numbers;
+      var bonus      = draw.bonus;
+      var roundNo    = draw.round || (TRAIN_UNTIL + ti + 1);
+
+      // 현재 probMap으로 예측 생성 (경량)
+      var predResult = await CubeEngine.generate(
+        CubeEngine.withPreset('turbo', {
+          history        : trainNums.concat(testDraws.slice(0, ti).map(function(d){return d.numbers;})),
+          bonusHistory   : null,
+          colorZoneWeight: 0.20,
+          externalProbMap: currentProbMap,
+          topN           : 1,
+          rounds         : 10,
+          poolSize       : 500
+        })
+      );
+
+      var predicted = predResult.results[0] || [];
+
+      // 실제 당첨과 비교 + probMap 피드백
+      var hitCount = btFeedback(currentProbMap, predicted, actual, bonus);
+
+      // 통계 업데이트
+      BT.stats.count++;
+      BT.stats.totalHits += hitCount;
+      if(hitCount >= 6)      { BT.stats.hit6++; }
+      else if(hitCount >= 5) { BT.stats.hit5++; }
+      else if(hitCount >= 4) { BT.stats.hit4++; }
+      else if(hitCount >= 3) { BT.stats.hit3++; }
+      else                   { BT.stats.hit2++; }
+
+      // UI 업데이트
+      var pct = Math.round((ti+1)/testDraws.length*100);
+      $('btBar').style.width = pct + '%';
+      $('btProgress').textContent = pct + '%';
+      $('btCurDraw').textContent = roundNo + '회';
+      btUpdateStats();
+
+      var hitColor = hitCount>=4?'#f5a623':hitCount>=3?'#00ff88':'#8b949e';
+      btLog(roundNo+'회: 예측'+JSON.stringify(predicted)+' | 실제'+JSON.stringify(actual)+' → '+hitCount+'개 적중', hitColor);
+
+      if(ti % 10 === 0) {
+        $('btStatus').textContent = '② '+roundNo+'회차 검증 중... ('+pct+'%)';
+        await new Promise(function(r){ setTimeout(r, 0); });
+      }
+    }
+
+    // ③ 최종 결과 저장 → 로또 웹 반영
+    $('btStatus').textContent = '③ 학습 결과 Firebase 저장 중...';
+    tlog('🔬 백테스팅 완료 — '+testDraws.length+'회 검증 | 평균 적중: '+(BT.stats.totalHits/BT.stats.count).toFixed(2)+'개','ts');
+    tlog('   3등이상: '+(BT.stats.hit6+BT.stats.hit5+BT.stats.hit4+BT.stats.hit3)+'회 / 총 '+BT.stats.count+'회','ts');
+
+    // probMap을 result 형식으로 변환해서 saveSharedEngineState 재활용
+    var fakeResult = {
+      probMap  : currentProbMap,
+      fullPool : initResult.fullPool,
+      results  : initResult.results,
+      scores   : initResult.scores
+    };
+    var savedIter = await saveSharedEngineState(fakeResult, 'backtest');
+    tlog('✅ 백테스팅 학습 저장 완료 — iteration:'+savedIter+' | 로또 웹 즉시 반영','ts');
+    $('btStatus').textContent = '✅ 완료! 로또 웹에 학습 반영됨 (iteration: '+savedIter+')';
+
+    // 히트맵도 갱신
+    renderHM(currentProbMap);
+    renderBar(currentProbMap);
+
+  } catch(e) {
+    tlog('백테스팅 오류: '+e.message,'te');
+    $('btStatus').textContent = '❌ 오류: '+e.message;
+    console.error(e);
+  } finally {
+    BT.running = false;
+    $('btnBacktest').disabled = false;
+    $('btnRun').disabled = false;
+  }
+}
+
+$('btnBacktest').onclick = runBacktest;
+
+
 
 // ══ 초기 자동 로드 ══
 (async function(){
