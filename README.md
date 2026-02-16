@@ -462,10 +462,25 @@ setCubeEngine.html 신설
 - disabled 스타일: opacity 50% + cursor:not-allowed
 
 ---
+### **v2.2.3 UI** (2026-02-16)
 
+**KPI 한줄 바 + 하단 레이아웃 개선**
+
+① KPI 4개 항목 레이아웃 변경
+- 기존: 2×2 카드 그리드 (`g4`)
+- 변경: 한 줄 수평 바 (4열, 구분선 포함)
+- 항목: 누적 Iteration / POOL 크기 / BEST SCORE / 변화 번호
+- 번호를 크게(32px), 레이블·설명을 아래에 컴팩트하게 배치
+
+② 하단 섹션 순서 변경
+- 기존: StatCache → [추천 조합 | 실시간 로그] (좌우 분할)
+- 변경: StatCache → 실시간 로그(전체 너비) → 추천 조합(전체 너비)
+- 실시간 로그 높이 160px → 200px (넓어진 공간 활용)
+
+---
 ## 라이센스
 
-MIT License
+zerojat7 License
 
 ## 문의
 
