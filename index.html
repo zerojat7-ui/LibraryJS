@@ -264,12 +264,28 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
   </div>
 </div>
 
-<!-- KPI -->
-<div class="g4">
-  <div class="card"><div class="card-ttl"><div class="dot dg"></div>누적 Iteration</div><div class="kv" id="kpiIter">0</div><div class="ks">총 학습 횟수</div></div>
-  <div class="card"><div class="card-ttl"><div class="dot db"></div>Pool 크기</div><div class="kv" id="kpiPool" style="color:var(--blue)">0</div><div class="ks">생존 조합 수</div></div>
-  <div class="card"><div class="card-ttl"><div class="dot dy"></div>Best Score</div><div class="kv" id="kpiBest" style="color:var(--yellow)">-</div><div class="kd" id="kpiBestDiff"></div></div>
-  <div class="card"><div class="card-ttl"><div class="dot dp"></div>변화 번호</div><div class="kv" id="kpiChanged" style="color:var(--purple)">0</div><div class="ks">확률 변동 수</div></div>
+<!-- KPI 한줄 바 -->
+<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:10px;">
+  <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--border);">
+    <div style="font-size:11px;font-weight:bold;color:var(--sub);letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px;"><div class="dot dg"></div>누적 ITERATION</div>
+    <div style="font-size:32px;font-weight:bold;color:var(--green);line-height:1;" id="kpiIter">0</div>
+    <div style="font-size:10px;color:var(--sub);margin-top:5px;">총 학습 횟수</div>
+  </div>
+  <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--border);">
+    <div style="font-size:11px;font-weight:bold;color:var(--sub);letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px;"><div class="dot db"></div>POOL 크기</div>
+    <div style="font-size:32px;font-weight:bold;color:var(--blue);line-height:1;" id="kpiPool">0</div>
+    <div style="font-size:10px;color:var(--sub);margin-top:5px;">생존 조합 수</div>
+  </div>
+  <div style="padding:14px 10px;text-align:center;border-right:1px solid var(--border);">
+    <div style="font-size:11px;font-weight:bold;color:var(--sub);letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px;"><div class="dot dy"></div>BEST SCORE</div>
+    <div style="font-size:32px;font-weight:bold;color:var(--yellow);line-height:1;" id="kpiBest">-</div>
+    <div id="kpiBestDiff" style="font-size:11px;margin-top:5px;min-height:16px;"></div>
+  </div>
+  <div style="padding:14px 10px;text-align:center;">
+    <div style="font-size:11px;font-weight:bold;color:var(--sub);letter-spacing:.06em;display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px;"><div class="dot dp"></div>변화 번호</div>
+    <div style="font-size:32px;font-weight:bold;color:var(--purple);line-height:1;" id="kpiChanged">0</div>
+    <div style="font-size:10px;color:var(--sub);margin-top:5px;">확률 변동 수</div>
+  </div>
 </div>
 
 <!-- 진행 + 타임라인 -->
@@ -328,16 +344,16 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
   </div>
 </div>
 
-<!-- 추천 결과 + 실시간 로그 -->
-<div class="g2">
-  <div class="card">
-    <div class="card-ttl"><div class="dot dg"></div>추천 조합 Top 5</div>
-    <div class="combo-wrap" id="comboWrap"><span style="color:var(--sub);font-size:12px">학습 완료 후 표시됩니다</span></div>
-  </div>
-  <div class="card">
-    <div class="card-ttl"><div class="dot db"></div>실시간 로그</div>
-    <div class="term" id="terminal"><span class="ti">[시스템] CubeEngine v2.2.1 준비 완료</span></div>
-  </div>
+<!-- 실시간 로그 (전체 너비) -->
+<div class="card" style="margin-bottom:10px;">
+  <div class="card-ttl"><div class="dot db"></div>실시간 로그</div>
+  <div class="term" id="terminal" style="height:200px;"><span class="ti">[시스템] CubeEngine v2.2.1 준비 완료</span></div>
+</div>
+
+<!-- 추천 조합 (전체 너비) -->
+<div class="card" style="margin-bottom:10px;">
+  <div class="card-ttl"><div class="dot dg"></div>추천 조합 Top 5</div>
+  <div class="combo-wrap" id="comboWrap"><span style="color:var(--sub);font-size:12px">학습 완료 후 표시됩니다</span></div>
 </div>
 
 <script src="cube-engine.js"></script>
