@@ -236,12 +236,28 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
     </div>
     <!-- 상태 메시지 -->
     <div id="btStatus" style="font-size:12px;color:var(--sub);padding:6px 0;">대기 중...</div>
-    <!-- 반복 학습 컨트롤 -->
-    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px;background:#0d1117;border-radius:6px;">
-      <label style="font-size:11px;color:var(--sub);">반복 학습</label>
-      <input type="checkbox" id="btRepeat" style="width:16px;height:16px;cursor:pointer;">
-      <span style="font-size:11px;color:#58a6ff;">완료 후 자동 재시작 (probMap 누적)</span>
-      <span style="font-size:11px;color:var(--sub);margin-left:auto;">반복: <strong id="btRepeatCount" style="color:#a371f7;">0</strong>회</span>
+    <!-- 50회 체크포인트 컨트롤 -->
+    <div style="background:#0d1117;border-radius:6px;padding:10px;margin-top:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--sub);">체크포인트:</span>
+        <span id="btCheckpoint" style="font-size:12px;font-weight:bold;color:#58a6ff;">-</span>
+        <span style="font-size:11px;color:var(--sub);">| 전체 반복:</span>
+        <strong id="btRepeatCount" style="color:#a371f7;">0</strong>회
+        <span style="font-size:11px;color:var(--sub);">| 누적 학습:</span>
+        <strong id="btTotalDraws" style="color:#00ff88;">0</strong>회차
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button id="btnBtContinue" style="display:none;background:#1f4068;color:#58a6ff;border:1px solid #58a6ff;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;">▶ 계속 (다음 50회)</button>
+        <button id="btnBtRestart" style="display:none;background:#2d1a00;color:#f5a623;border:1px solid #f5a623;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;">↺ 처음부터 재시작</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;">
+          <input type="checkbox" id="btRepeat" style="width:14px;height:14px;">
+          <span style="color:#8b949e;">데이터 소진 시 자동 반복</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;">
+          <input type="checkbox" id="btAutoNext" checked style="width:14px;height:14px;">
+          <span style="color:#8b949e;">50회마다 자동 계속</span>
+        </label>
+      </div>
     </div>
     <!-- 최근 결과 로그 -->
     <div id="btLog" style="max-height:120px;overflow-y:auto;font-size:11px;font-family:monospace;background:#0d1117;border-radius:6px;padding:8px;margin-top:8px;"></div>
@@ -871,6 +887,18 @@ var BT = {
 
 var BT_REPEAT_COUNT = 0;
 
+// ── v2.5.0 체크포인트 상태 ──
+var BT_STATE = {
+  allDraws        : [],    // 전체 당첨 데이터
+  currentProbMap  : null,  // 현재 학습된 probMap
+  cumulativeHistory: [],   // 누적 당첨 번호
+  cumulativeBonus : [],    // 누적 보너스
+  nextIdx         : 0,     // 다음 실행할 testDraws 인덱스
+  TRAIN_UNTIL     : 900,   // 초기 학습 경계
+  totalProcessed  : 0,     // 전체 처리 회차 수 (반복 포함)
+  repeatRound     : 0      // 전체 반복 횟수
+};
+
 function btShowBalls(predicted, actual) {
   function makeBall(n, hit) {
     var d = document.createElement('div');
@@ -956,215 +984,257 @@ function btFeedback(probMap, predicted, actual, bonus) {
   return hitCount;
 }
 
-async function runBacktest() {
+// ══════════════════════════════════════════════════
+//  v2.5.0 백테스팅 — 50회 단위 체크포인트
+//  - 900회 초기학습 → 50회씩 검증 → 멈춤/계속
+//  - 이전 학습 probMap 누적 반영
+//  - 데이터 소진 시 자동 반복 (btRepeat 체크)
+// ══════════════════════════════════════════════════
+
+function btUpdateCheckpointUI() {
+  var s = BT_STATE;
+  var testLen = s.allDraws.length - s.TRAIN_UNTIL;
+  var done = s.nextIdx;
+  var remain = testLen - done;
+  $('btCheckpoint').textContent = (s.TRAIN_UNTIL + done) + '회차 / 총 ' + s.allDraws.length + '회차 (남은 ' + remain + '회)';
+  $('btTotalDraws').textContent = s.totalProcessed;
+}
+
+// 50회 단위 실행 — resume: true면 이어서, false면 처음부터
+async function runBacktestChunk(resume) {
   if(BT.running) return;
 
-  // 데이터 로드
-  $('btStatus').textContent = '당첨 데이터 로딩 중...';
-  var _lh = await loadLottoHistory();
-  var allDraws = Array.isArray(_lh) ? [] : (_lh.draws || []);
+  // 처음 시작이면 데이터 로드
+  if(!resume || BT_STATE.allDraws.length === 0) {
+    $('btStatus').textContent = '당첨 데이터 로딩 중...';
+    var _lh = await loadLottoHistory();
+    BT_STATE.allDraws = Array.isArray(_lh) ? [] : (_lh.draws || []);
 
-  if(allDraws.length < 100) {
-    $('btStatus').textContent = '❌ 데이터 부족 (최소 100회차 필요)';
-    return;
+    if(BT_STATE.allDraws.length < 100) {
+      $('btStatus').textContent = '❌ 데이터 부족 (최소 100회차 필요)';
+      return;
+    }
+    BT_STATE.TRAIN_UNTIL = Math.min(900, Math.floor(BT_STATE.allDraws.length * 0.75));
   }
 
-  var TRAIN_UNTIL = Math.min(900, Math.floor(allDraws.length * 0.75));
+  var allDraws    = BT_STATE.allDraws;
+  var TRAIN_UNTIL = BT_STATE.TRAIN_UNTIL;
   var testDraws   = allDraws.slice(TRAIN_UNTIL);
-  var trainDraws  = allDraws.slice(0, TRAIN_UNTIL);
 
-  if(testDraws.length === 0) {
-    $('btStatus').textContent = '❌ 테스트 데이터 없음';
-    return;
+  // 데이터 소진 확인
+  if(BT_STATE.nextIdx >= testDraws.length) {
+    BT_STATE.repeatRound++;
+    BT_REPEAT_COUNT = BT_STATE.repeatRound;
+    $('btRepeatCount').textContent = BT_REPEAT_COUNT;
+
+    if($('btRepeat').checked) {
+      // 자동 반복: nextIdx 리셋, 이전 probMap 유지하여 재시작
+      BT_STATE.nextIdx = 0;
+      BT_STATE.cumulativeHistory = allDraws.slice(0, TRAIN_UNTIL).map(function(d){return d.numbers;});
+      BT_STATE.cumulativeBonus   = allDraws.slice(0, TRAIN_UNTIL).map(function(d){return d.bonus;}).filter(function(b){return b&&b>=1&&b<=45;});
+      tlog('🔁 데이터 소진 — 자동 반복 #'+BT_STATE.repeatRound+' (이전 probMap 반영)','ti');
+      btLog('── 자동 반복 #'+BT_STATE.repeatRound+' 시작 ──', '#a371f7');
+      await new Promise(function(r){setTimeout(r,800);});
+    } else {
+      $('btStatus').textContent = '✅ 전체 데이터 소진 — 반복 체크박스로 계속할 수 있습니다';
+      $('btnBtContinue').style.display = 'none';
+      $('btnBtRestart').style.display = 'inline-block';
+      BT.running = false;
+      $('btnBacktest').disabled = false;
+      $('btnRun').disabled = false;
+      return;
+    }
   }
 
   BT.running = true;
-  BT.stats = { hit6:0, hit5:0, hit4:0, hit3:0, hit2:0, totalHits:0, count:0 };
   $('btPanel').style.display = 'block';
   $('btnBacktest').disabled = true;
   $('btnRun').disabled = true;
-  $('btLog').innerHTML = '';
+  $('btnBtContinue').style.display = 'none';
+  $('btnBtRestart').style.display = 'none';
 
-  tlog('🔬 백테스팅 시작 — 초기학습: '+TRAIN_UNTIL+'회차 | 테스트: '+testDraws.length+'회차','ts');
-  $('btStatus').textContent = '① 초기 학습 중 (1~'+TRAIN_UNTIL+'회차)...';
+  // 초기 학습 (처음 시작이거나 nextIdx=0일 때)
+  if(!resume || BT_STATE.currentProbMap === null || BT_STATE.nextIdx === 0) {
+    BT.stats = { hit6:0, hit5:0, hit4:0, hit3:0, hit2:0, totalHits:0, count:0 };
+    $('btLog').innerHTML = '';
 
-  try {
-    // ── 반복 2회차부터: 이전 백테스팅 probMap 로드 (50:50 블렌딩용) ──
+    tlog('🔬 백테스팅 시작 — 초기학습: 1~'+TRAIN_UNTIL+'회 | 검증: '+testDraws.length+'회 | 50회 단위 실행','ts');
+    $('btStatus').textContent = '① 초기 학습 중 (1~'+TRAIN_UNTIL+'회차)...';
+
+    var trainDraws = allDraws.slice(0, TRAIN_UNTIL);
+    var trainNums  = trainDraws.map(function(d){ return d.numbers; });
+    var trainBonus = trainDraws.map(function(d){ return d.bonus; }).filter(function(b){ return b&&b>=1&&b<=45; });
+
+    // 이전 백테스팅 probMap 로드 (반복 학습 시 누적)
     var prevBtProbMap = null;
-    if(BT_REPEAT_COUNT > 0) {
+    if(BT_STATE.repeatRound > 0 || BT_REPEAT_COUNT > 0) {
       try {
         var prevSnap = await BT_DOC.get();
         if(prevSnap.exists && prevSnap.data().probMap) {
           prevBtProbMap = {};
           var raw = prevSnap.data().probMap;
-          for(var n=1; n<=45; n++) {
-            var key = 'n' + n;
-            prevBtProbMap[n] = raw[key] != null ? parseFloat(raw[key]) : 0.1;
-          }
-          tlog('📂 이전 백테스팅 probMap 로드 ('+BT_REPEAT_COUNT+'회차 누적)','ti');
+          for(var n=1;n<=45;n++) prevBtProbMap[n] = raw['n'+n]!=null ? parseFloat(raw['n'+n]) : 0.1;
+          tlog('📂 이전 백테스팅 probMap 로드 (반복 #'+BT_STATE.repeatRound+')','ti');
         }
-      } catch(e) { tlog('이전 probMap 로드 실패, 초기값 사용: '+e.message,'tw'); }
+      } catch(e) { tlog('이전 probMap 로드 실패: '+e.message,'tw'); }
     }
 
-    // ① 초기 학습: 1~TRAIN_UNTIL 로 엔진 실행
-    var trainNums  = trainDraws.map(function(d){ return d.numbers; });
-    var trainBonus = trainDraws.map(function(d){ return d.bonus; }).filter(function(b){ return b&&b>=1&&b<=45; });
+    try {
+      var initResult = await CubeEngine.generate(
+        CubeEngine.withPreset('turbo', {
+          history        : trainNums,
+          bonusHistory   : trainBonus.length > 0 ? trainBonus : null,
+          colorZoneWeight: 0.20,
+          topN           : 5,
+          rounds         : 30
+        })
+      );
 
-    var initResult = await CubeEngine.generate(
-      CubeEngine.withPreset('turbo', {
-        history        : trainNums,
-        bonusHistory   : trainBonus.length > 0 ? trainBonus : null,
-        colorZoneWeight: 0.20,
-        topN           : 5,
-        rounds         : 30
-      })
-    );
-
-    // probMap을 변경 가능한 객체로 복사
-    // 반복 2회차부터: 이전 probMap 50% + 이번 초기학습 50% 블렌딩
-    var currentProbMap = {};
-    if(prevBtProbMap) {
-      for(var n=1; n<=45; n++) {
-        currentProbMap[n] = prevBtProbMap[n] * 0.5 + (initResult.probMap[n] || 0.1) * 0.5;
+      // 이전 학습 반영: 이전 probMap 50% + 초기학습 50%
+      var initProbMap = {};
+      if(prevBtProbMap) {
+        for(var n=1;n<=45;n++) initProbMap[n] = prevBtProbMap[n]*0.5 + (initResult.probMap[n]||0.1)*0.5;
+        btLog('이전 학습 반영 (50:50 블렌딩)', '#69c8f0');
+      } else {
+        for(var n=1;n<=45;n++) initProbMap[n] = initResult.probMap[n] || 0.1;
       }
-      tlog('🔀 50:50 블렌딩 적용 — 이전 학습 + 이번 초기학습','ti');
-      btLog('50:50 블렌딩 (이전학습+신규초기학습)', '#69c8f0');
-    } else {
-      for(var n=1; n<=45; n++) currentProbMap[n] = initResult.probMap[n] || 0.1;
+      BT_STATE.currentProbMap = initProbMap;
+      BT_STATE.cumulativeHistory = trainNums.slice();
+      BT_STATE.cumulativeBonus   = trainBonus.slice();
+      BT_STATE.nextIdx = 0;
+
+      S.curve = initResult.scoreHistory || [];
+      renderCurve();
+      tlog('✅ 초기 학습 완료 — best:'+initResult.scores[0].toFixed(2),'ts');
+      btLog('초기학습 완료 best:'+initResult.scores[0].toFixed(2), '#00ff88');
+      initTL(testDraws.length);
+    } catch(e) {
+      tlog('초기 학습 오류: '+e.message,'te');
+      BT.running = false;
+      $('btnBacktest').disabled = false;
+      $('btnRun').disabled = false;
+      return;
     }
+  }
 
-    tlog('✅ 초기 학습 완료 — bestScore: '+initResult.scores[0].toFixed(2),'ts');
-    btLog('초기학습 완료 ('+TRAIN_UNTIL+'회차) best:'+initResult.scores[0].toFixed(2), '#00ff88');
+  // ── 50회 단위 검증 루프 ──
+  var CHUNK_SIZE = 50;
+  var startIdx   = BT_STATE.nextIdx;
+  var endIdx     = Math.min(startIdx + CHUNK_SIZE, testDraws.length);
+  var currentProbMap = BT_STATE.currentProbMap;
 
-    // ① 초기 학습 점수 그래프 반영
-    S.curve = initResult.scoreHistory || [];
-    renderCurve();
+  $('btStatus').textContent = '② 검증 중: ' + (TRAIN_UNTIL+startIdx+1) + '~' + (TRAIN_UNTIL+endIdx) + '회차';
+  tlog('▶ '+( TRAIN_UNTIL+startIdx+1)+'~'+(TRAIN_UNTIL+endIdx)+'회차 검증 ('+CHUNK_SIZE+'회 단위)','ti');
 
-    // ② 901~1211회차: 예측 → 비교 → 피드백 루프
-    $('btStatus').textContent = '② 검증 학습 진행 중...';
-
-    // 라운드 타임라인 초기화 (testDraws 수만큼)
-    initTL(testDraws.length);
-
-    // 누적 history: trainNums에서 시작, 검증 회차마다 추가 (학습력 유지)
-    var cumulativeHistory = trainNums.slice();
-    var cumulativeBonus   = trainBonus.slice();
-
-    for(var ti=0; ti<testDraws.length; ti++) {
+  try {
+    for(var ti=startIdx; ti<endIdx; ti++) {
       var draw    = testDraws[ti];
       var actual  = draw.numbers;
       var bonus   = draw.bonus;
       var roundNo = draw.round || (TRAIN_UNTIL + ti + 1);
 
-      // 현재 누적 history + 이전 피드백 probMap으로 예측
-      // history는 점점 쌓이고, probMap도 피드백으로 계속 보정됨 → 학습력 유지
       var predResult = await CubeEngine.generate(
         CubeEngine.withPreset('turbo', {
-          history        : cumulativeHistory,
-          bonusHistory   : cumulativeBonus.length > 0 ? cumulativeBonus : null,
+          history        : BT_STATE.cumulativeHistory,
+          bonusHistory   : BT_STATE.cumulativeBonus.length > 0 ? BT_STATE.cumulativeBonus : null,
           colorZoneWeight: 0.20,
-          externalProbMap: currentProbMap,  // ← 피드백으로 보정된 최신 probMap 전달
+          externalProbMap: currentProbMap,
           topN           : 1,
           rounds         : 10,
-          poolSize       : 500,
-          onProgress     : function(pct, stats) {
-            // 라운드 타임라인 업데이트
-            if(stats && stats.phase === 'evolving' && stats.round) {
-              // 백테스팅 내부 라운드는 타임라인에 표시 안 함 (회차 타임라인과 혼동 방지)
-            }
-          }
+          poolSize       : 500
         })
       );
 
       var predicted = predResult.results[0] || [];
+      var hitCount  = btFeedback(currentProbMap, predicted, actual, bonus);
 
-      // 실제 당첨과 비교 + probMap 피드백 (currentProbMap 직접 보정)
-      var hitCount = btFeedback(currentProbMap, predicted, actual, bonus);
+      BT_STATE.cumulativeHistory.push(actual);
+      if(bonus&&bonus>=1&&bonus<=45) BT_STATE.cumulativeBonus.push(bonus);
 
-      // 검증 완료 후 해당 회차 데이터를 누적 history에 추가 (다음 회차 학습에 반영)
-      cumulativeHistory.push(actual);
-      if(bonus && bonus >= 1 && bonus <= 45) cumulativeBonus.push(bonus);
-
-      // 점수 그래프: 적중수를 점수로 환산해서 곡선에 추가
-      S.curve.push(hitCount * 100 + (predResult.scores[0] || 0));
-      if(ti % 5 === 0) renderCurve();
-
-      // 라운드 타임라인 틱
-      tickTL(ti + 1);
-
-      // 히트맵 실시간 갱신 (10회마다)
-      if(ti % 10 === 0) renderHM(currentProbMap);
-
-      // 통계 업데이트
+      BT_STATE.totalProcessed++;
       BT.stats.count++;
       BT.stats.totalHits += hitCount;
-      if(hitCount >= 6)      { BT.stats.hit6++; }
-      else if(hitCount >= 5) { BT.stats.hit5++; }
-      else if(hitCount >= 4) { BT.stats.hit4++; }
-      else if(hitCount >= 3) { BT.stats.hit3++; }
-      else                   { BT.stats.hit2++; }
+      if(hitCount>=6) BT.stats.hit6++;
+      else if(hitCount>=5) BT.stats.hit5++;
+      else if(hitCount>=4) BT.stats.hit4++;
+      else if(hitCount>=3) BT.stats.hit3++;
+      else BT.stats.hit2++;
 
-      // UI 업데이트
+      S.curve.push(hitCount*100 + (predResult.scores[0]||0));
+      if((ti-startIdx)%5===0) renderCurve();
+      tickTL(ti+1);
+      if((ti-startIdx)%10===0) renderHM(currentProbMap);
+
       var pct = Math.round((ti+1)/testDraws.length*100);
-      $('btBar').style.width = pct + '%';
-      $('btProgress').textContent = pct + '%';
-      $('btCurDraw').textContent = roundNo + '회';
+      $('btBar').style.width = pct+'%';
+      $('btProgress').textContent = pct+'%';
+      $('btCurDraw').textContent = roundNo+'회';
       btUpdateStats();
-
-      // 볼 표시
       btShowBalls(predicted, actual);
+      btUpdateCheckpointUI();
 
       var hitColor = hitCount>=4?'#f5a623':hitCount>=3?'#00ff88':'#8b949e';
       btLog(roundNo+'회 ['+hitCount+'개] 예측:'+predicted.join(',')+'  실제:'+actual.join(','), hitColor);
 
-      if(ti % 5 === 0) {
-        $('btStatus').textContent = '② '+roundNo+'회차 검증 중... ('+pct+'%) | 누적history: '+cumulativeHistory.length+'회';
-        await new Promise(function(r){ setTimeout(r, 0); });
+      if((ti-startIdx)%5===0) {
+        await new Promise(function(r){ setTimeout(r,0); });
       }
     }
 
-    // 최종 그래프 갱신
-    renderCurve();
-    renderHM(currentProbMap);
-    renderBar(currentProbMap);
+    // 청크 완료
+    BT_STATE.nextIdx = endIdx;
+    BT_STATE.currentProbMap = currentProbMap;
 
-    // ③ 최종 결과 저장 → 로또 웹 반영
-    $('btStatus').textContent = '③ 학습 결과 Firebase 저장 중...';
-    tlog('🔬 백테스팅 완료 — '+testDraws.length+'회 검증 | 평균 적중: '+(BT.stats.totalHits/BT.stats.count).toFixed(2)+'개','ts');
-    tlog('   3등이상: '+(BT.stats.hit6+BT.stats.hit5+BT.stats.hit4+BT.stats.hit3)+'회 / 총 '+BT.stats.count+'회','ts');
-
-    // probMap을 result 형식으로 변환해서 saveSharedEngineState 재활용
-    var fakeResult = {
-      probMap  : currentProbMap,
-      fullPool : initResult.fullPool,
-      results  : initResult.results,
-      scores   : initResult.scores
-    };
-    var savedIter = await saveBacktestState(currentProbMap, 'backtest');
-    tlog('✅ 백테스팅 저장 완료 — iteration:'+savedIter+' (backtest_engine_state | 로또 웹 미적용)','ts');
+    // Firebase 저장 (청크 완료마다)
+    var savedIter = await saveBacktestState(currentProbMap, 'backtest_chunk');
+    tlog('💾 '+endIdx+'번째 회차까지 저장 — iter:'+savedIter,'ti');
     $('btnApplyBt').style.display = 'block';
 
-    BT_REPEAT_COUNT++;
-    $('btRepeatCount').textContent = BT_REPEAT_COUNT;
-
-    // 최종 그래프 갱신
     renderCurve();
     renderHM(currentProbMap);
     renderBar(currentProbMap);
 
-    // ── 반복 학습: 체크박스 ON이면 저장된 probMap 기반으로 자동 재시작 ──
-    if($('btRepeat').checked) {
-      tlog('🔁 반복 학습 재시작 ('+BT_REPEAT_COUNT+'회 완료) — probMap 누적 적용','ti');
-      $('btStatus').textContent = '🔁 재시작 중... ('+BT_REPEAT_COUNT+'회 완료 / 1.5초 후 시작)';
-      BT.running = false;
-      await new Promise(function(r){ setTimeout(r, 1500); });
-      if($('btRepeat').checked) { runBacktest(); return; }
+    var remain = testDraws.length - endIdx;
+    if(remain <= 0) {
+      // 데이터 소진
+      BT_STATE.repeatRound++;
+      BT_REPEAT_COUNT = BT_STATE.repeatRound;
+      $('btRepeatCount').textContent = BT_REPEAT_COUNT;
+      tlog('🏁 전체 검증 완료 — 총 '+BT_STATE.totalProcessed+'회차 처리 | 반복 '+BT_STATE.repeatRound+'회','ts');
+
+      if($('btRepeat').checked) {
+        BT_STATE.nextIdx = 0;
+        BT_STATE.cumulativeHistory = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.numbers;});
+        BT_STATE.cumulativeBonus   = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.bonus;}).filter(function(b){return b&&b>=1&&b<=45;});
+        BT.running = false;
+        $('btnBacktest').disabled = false;
+        $('btnRun').disabled = false;
+        btLog('── 자동 반복 #'+BT_STATE.repeatRound+' 시작 ──', '#a371f7');
+        await new Promise(function(r){setTimeout(r,1000);});
+        runBacktestChunk(true);
+        return;
+      }
+      $('btStatus').textContent = '✅ 전체 완료! 총 '+BT_STATE.totalProcessed+'회차 | 반복 '+BT_STATE.repeatRound+'회';
+      $('btnBtContinue').style.display = 'none';
+      $('btnBtRestart').style.display = 'inline-block';
+    } else {
+      $('btStatus').textContent = '⏸ '+endIdx+'회차 완료 (남은 '+remain+'회) — 계속하거나 결과 확인';
+      btLog('── '+endIdx+'회 체크포인트 ── 남은 '+remain+'회', '#58a6ff');
+
+      if($('btAutoNext').checked) {
+        // 자동 계속
+        BT.running = false;
+        await new Promise(function(r){setTimeout(r,500);});
+        runBacktestChunk(true);
+        return;
+      }
+      // 수동 계속 버튼 표시
+      $('btnBtContinue').style.display = 'inline-block';
+      $('btnBtRestart').style.display = 'inline-block';
     }
 
-    $('btStatus').textContent = '✅ 완료! iteration:'+savedIter+' | 반복: '+BT_REPEAT_COUNT+'회';
-
   } catch(e) {
-    tlog('백테스팅 오류: '+e.message,'te');
+    tlog('검증 오류: '+e.message,'te');
     $('btStatus').textContent = '❌ 오류: '+e.message;
     console.error(e);
   } finally {
@@ -1174,7 +1244,20 @@ async function runBacktest() {
   }
 }
 
+// 처음부터 시작
+async function runBacktest() {
+  BT_STATE.currentProbMap = null;
+  BT_STATE.nextIdx = 0;
+  BT_STATE.totalProcessed = 0;
+  BT_STATE.allDraws = [];
+  runBacktestChunk(false);
+}
+
 $('btnBacktest').onclick = runBacktest;
+$('btnBtContinue').onclick = function(){ runBacktestChunk(true); };
+$('btnBtRestart').onclick = function(){
+  if(confirm('처음부터 다시 시작합니까? 현재 체크포인트가 초기화됩니다.')) runBacktest();
+};
 $('btnApplyBt').onclick = applyBacktestToLive;
 
 

@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.4.2  (Universal)             ║
+ * ║              CubeEngine  v2.5.0  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · MultiTrend v2.4.2         ║
+ * ║   + StatCache · WeightedProb · Stat50Trend v2.5.0        ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
@@ -14,6 +14,7 @@
  * v2.2.5: 색상 구역 통계 최근 100회로 제한 (오래된 패턴 배제)
  * v2.3.0: 색상 구역 변화 트렌드 반영 (zoneTrend)
  * v2.4.1: 색상 트렌드 구조 개선
+ * v2.5.0: 5종 지표(freq/recentFreq/gap/reHit/bonus) 최신50회 vs 이전50회 트렌드 학습
  *         - 최근100회 전반50/후반50 비율 → 최근20회/이전20회 절대변화값(delta)
  *         - zoneDelta = 최근20평균 - 이전20평균 (양수=강세, 음수=약세)
  *         - clamp ±1.2 → 0~1 정규화 (비율 폭발 문제 해결)
@@ -296,10 +297,84 @@ function buildStatCache(history, cfg) {
         trends.highRatio = trendRatio(highFirst/tFirst.length, highSecond/tSecond.length);
     }
 
+    // ── v2.5.0: 5종 지표 최신50회 vs 이전50회 트렌드 ──
+    // 색상(colorZone)은 이미 별도 처리하므로 제외
+    // 대상: freq / recentFreq / gap / reHit / bonus
+    var stat50Trend = {};
+    for(var si=1; si<=cfg.items; si++) stat50Trend[si] = 0.5; // 기본: 중립
+
+    if(history && history.length >= 50) {
+        var h = history;
+        var hLen = h.length;
+        var NEW50 = h.slice(hLen - 50);           // 최신 50회
+        var OLD50 = h.slice(Math.max(0, hLen - 100), hLen - 50); // 이전 50회
+
+        // ① freq 트렌드: 최신50 출현수 vs 이전50 출현수
+        var freqNew = {}, freqOld = {};
+        for(var si=1; si<=cfg.items; si++) { freqNew[si]=0; freqOld[si]=0; }
+        NEW50.forEach(function(d){ d.forEach(function(n){ if(freqNew[n]!==undefined) freqNew[n]++; }); });
+        if(OLD50.length>0) OLD50.forEach(function(d){ d.forEach(function(n){ if(freqOld[n]!==undefined) freqOld[n]++; }); });
+
+        // ② gap 트렌드: 이전50에서의 gap vs 최신50에서의 gap (작을수록 최근 출현 = 양수)
+        // gap50 = 최신50 내에서의 마지막 출현 간격 (없으면 50)
+        var gapNew = {}, gapOld = {};
+        for(var si=1; si<=cfg.items; si++) { gapNew[si]=50; gapOld[si]=(OLD50.length||50); }
+        for(var si=1; si<=cfg.items; si++) {
+            for(var ji=NEW50.length-1; ji>=0; ji--) {
+                if(NEW50[ji].indexOf(si)>=0){ gapNew[si]=NEW50.length-ji-1; break; }
+            }
+            if(OLD50.length>0) {
+                for(var ji=OLD50.length-1; ji>=0; ji--) {
+                    if(OLD50[ji].indexOf(si)>=0){ gapOld[si]=OLD50.length-ji-1; break; }
+                }
+            }
+        }
+
+        // ③ reHit 트렌드: 최신50/이전50 내 연속 재출현 횟수
+        var reHitNew = {}, reHitOld = {};
+        for(var si=1; si<=cfg.items; si++) { reHitNew[si]=0; reHitOld[si]=0; }
+        for(var ki=1; ki<NEW50.length; ki++) {
+            var prev50 = NEW50[ki-1], curr50 = NEW50[ki];
+            prev50.forEach(function(n){ if(curr50.indexOf(n)>=0&&reHitNew[n]!==undefined) reHitNew[n]++; });
+        }
+        for(var ki=1; ki<OLD50.length; ki++) {
+            var prev50o = OLD50[ki-1], curr50o = OLD50[ki];
+            prev50o.forEach(function(n){ if(curr50o.indexOf(n)>=0&&reHitOld[n]!==undefined) reHitOld[n]++; });
+        }
+
+        // ④ bonus 트렌드: bonusHistory 있으면 최신50/이전50 보너스 빈도
+        var bonusNew = {}, bonusOld = {};
+        for(var si=1; si<=cfg.items; si++) { bonusNew[si]=0; bonusOld[si]=0; }
+        if(cfg.bonusHistory && cfg.bonusHistory.length >= 50) {
+            var bh = cfg.bonusHistory;
+            var bLen = bh.length;
+            bh.slice(bLen-50).forEach(function(b){ if(bonusNew[b]!==undefined) bonusNew[b]++; });
+            bh.slice(Math.max(0,bLen-100), bLen-50).forEach(function(b){ if(bonusOld[b]!==undefined) bonusOld[b]++; });
+        }
+
+        // ── 5종 델타 합산 → stat50Trend 0~1 정규화 ──
+        for(var si=1; si<=cfg.items; si++) {
+            // 각 지표 delta (양수=강세, 음수=약세)
+            var dFreq    = (freqNew[si] - freqOld[si]) / 50;           // -1~+1
+            var dRecent  = dFreq;                                        // freq와 유사, 단순화
+            var dGap     = (gapOld[si] - gapNew[si]) / 50;             // gap 감소=강세=양수
+            var dReHit   = (reHitNew[si] - reHitOld[si]) / 10;         // -1~+1
+            var dBonus   = (bonusNew[si] - bonusOld[si]) / 50;         // -1~+1
+
+            // 가중 합산: freq/recent 각 30%, gap 20%, reHit 10%, bonus 10%
+            var delta = dFreq*0.30 + dRecent*0.30 + dGap*0.20 + dReHit*0.10 + dBonus*0.10;
+
+            // clamp -1~+1 → 정규화 0~1 (0.5=중립)
+            delta = Math.max(-1, Math.min(1, delta));
+            stat50Trend[si] = (delta + 1) / 2;  // 0~1
+        }
+    }
+
     return { freq:freq, recentFreq:recentFreq, gap:gap, reHit:reHit,
              colorZone:colorZone, zoneFreq:zoneFreq, zoneGap:zoneGap,
              COLOR_ZONES:COLOR_ZONES, zoneTrend:zoneTrend,
-             zoneAvg:zoneAvg, zoneDelta:zoneDelta, trends:trends };
+             zoneAvg:zoneAvg, zoneDelta:zoneDelta, trends:trends,
+             stat50Trend:stat50Trend };  // v2.5.0
 }
 
 /* ─────────────────────────────────────────
@@ -400,18 +475,23 @@ function buildWeightedProb(cfg, validPool, stat) {
         var reHitScore  = stat.reHit[n]      / totalDraw;
         var bonusScore  = bonusTotal > 0 ? bonusFreq[n] / bonusTotal : 0;
 
+        // v2.5.0: stat50Trend (0~1, 0.5=중립)
+        var s50t = (stat.stat50Trend && stat.stat50Trend[n] !== undefined)
+            ? stat.stat50Trend[n] : 0.5;
+
         probMap[n] =
-            freqScore            * 0.18 +
-            recentScore          * 0.18 +
-            gapScore             * 0.10 +
-            reHitScore           * 0.10 +
-            bonusScore           * bw   +
-            zoneGapScore[n]      * 0.04 +
-            colorTrendScore[n]   * 0.08 +
-            oddTrendScore[n]     * 0.07 +
-            tailTrendScore[n]    * 0.07 +
-            highTrendScore[n]    * 0.03;
-        // 합계: 0.18+0.18+0.10+0.10+0.15+0.04+0.08+0.07+0.07+0.03 = 1.00
+            freqScore            * 0.16 +
+            recentScore          * 0.16 +
+            gapScore             * 0.09 +
+            reHitScore           * 0.09 +
+            bonusScore           * (bw * 0.87) +  // 0.15→0.13
+            zoneGapScore[n]      * 0.03 +
+            colorTrendScore[n]   * 0.07 +
+            oddTrendScore[n]     * 0.06 +
+            tailTrendScore[n]    * 0.06 +
+            highTrendScore[n]    * 0.05 +
+            s50t                 * 0.10;  // v2.5.0 5종 트렌드
+        // 합계: 0.16+0.16+0.09+0.09+0.13+0.03+0.07+0.06+0.06+0.05+0.10 = 1.00
     });
     return probMap;
 }
@@ -792,7 +872,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.4.2'
+            version  : '2.5.0'
         }
     };
 
@@ -808,7 +888,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.4.2',
+    version  : '2.5.0',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },

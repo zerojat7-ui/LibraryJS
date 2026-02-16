@@ -534,3 +534,40 @@ zoneDelta = recentAvg - prevAvg  (절대 변화값)
 - `BT_RESUME_INDEX`: 중단 위치 저장 (-1=처음부터)
 - `BT_STEP = 50`: 1회 실행당 검증 회차 수
 - 재가동/반복 모두 Firebase에서 이전 probMap 로드 후 50:50 블렌딩
+
+## ver 2.5.0
+2026-02-16
+
+### 5종 지표 트렌드 학습 + 백테스팅 50회 체크포인트 (cube-engine.js, index.html)
+
+**cube-engine.js v2.5.0**
+
+5종 지표 최신50회 vs 이전50회 트렌드 분석 (stat50Trend)
+- 분석 대상: freq / recentFreq / gap / reHit / bonus (색상 제외)
+- 최신 50회 vs 이전 50회 각 지표 비교
+  - freq delta: 최신50 출현수 - 이전50 출현수
+  - gap delta: 이전50 간격 - 최신50 간격 (gap 감소=최근 강세=양수)
+  - reHit delta: 최신50 재출현 - 이전50 재출현
+  - bonus delta: 최신50 보너스 빈도 - 이전50 보너스 빈도
+- 가중 합산: freq×0.30 + recent×0.30 + gap×0.20 + reHit×0.10 + bonus×0.10
+- delta → 0~1 정규화 (0.5=중립, >0.5=강세, <0.5=약세)
+- buildWeightedProb 가중치 10% 반영 (기존 항목 소폭 조정)
+- history 50회 미만이면 중립값(0.5)으로 무효화
+
+**index.html — 백테스팅 50회 체크포인트**
+
+구조 변경: runBacktest() → runBacktestChunk(resume) 분리
+- 900회 초기학습 후 50회 단위로 멈춤
+- 체크포인트 상태 (BT_STATE): nextIdx / currentProbMap / cumulativeHistory 유지
+- 각 청크 완료마다 backtest_engine_state 저장 (이전 학습 누적)
+
+체크포인트 UI 컨트롤
+- [▶ 계속 (다음 50회)] 버튼: 현재 probMap + cumulativeHistory 이어서 실행
+- [↺ 처음부터 재시작] 버튼: BT_STATE 초기화 후 재시작
+- ☑ 50회마다 자동 계속: 체크 시 50회 완료 후 0.5초 대기 후 자동 계속
+- ☑ 데이터 소진 시 자동 반복: 체크 시 전체 소진 후 이전 probMap 반영하여 자동 재시작
+
+학습 누적 구조
+- 청크 완료마다 Firebase 저장 → 다음 청크 시작 시 이전 probMap 반영
+- 반복 시 Firebase의 누적 probMap 로드 후 50:50 블렌딩
+- 누적 처리 회차 수 (btTotalDraws) 실시간 표시
