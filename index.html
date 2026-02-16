@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CubeEngine v2.2.1 — 학습 모니터</title>
+<title>CubeEngine v2.5.1 — 학습 모니터</title>
 <style>
 :root {
   --bg:#0d1117; --card:#161b22; --border:#30363d;
@@ -915,6 +915,88 @@ var BT_STATE = {
   repeatRound     : 0      // 전체 반복 횟수
 };
 
+// ══ 체크포인트 영구 저장 (window.storage) ══
+var BT_STORAGE_KEY = 'bt_checkpoint_v2';
+
+async function saveBtCheckpoint() {
+  try {
+    // allDraws는 Firebase에서 다시 로드 가능하므로 제외 (용량 절약)
+    var toSave = {
+      currentProbMap   : BT_STATE.currentProbMap,
+      cumulativeHistory: BT_STATE.cumulativeHistory,
+      cumulativeBonus  : BT_STATE.cumulativeBonus,
+      nextIdx          : BT_STATE.nextIdx,
+      TRAIN_UNTIL      : BT_STATE.TRAIN_UNTIL,
+      totalProcessed   : BT_STATE.totalProcessed,
+      repeatRound      : BT_STATE.repeatRound,
+      btStats          : BT.stats,
+      btAutoNext       : $('btAutoNext').checked,
+      btRepeat         : $('btRepeat').checked,
+      savedAt          : new Date().toISOString()
+    };
+    await window.storage.set(BT_STORAGE_KEY, JSON.stringify(toSave));
+    tlog('💾 체크포인트 저장 (nextIdx:'+BT_STATE.nextIdx+')','ti');
+  } catch(e) {
+    tlog('⚠️ 체크포인트 저장 실패: '+e.message,'tw');
+  }
+}
+
+async function loadBtCheckpoint() {
+  try {
+    var result = await window.storage.get(BT_STORAGE_KEY);
+    if(!result || !result.value) return null;
+    return JSON.parse(result.value);
+  } catch(e) {
+    return null;
+  }
+}
+
+async function clearBtCheckpoint() {
+  try {
+    await window.storage.delete(BT_STORAGE_KEY);
+    tlog('🗑 체크포인트 초기화됨','ti');
+  } catch(e) {}
+}
+
+// ══ 페이지 로드 시 체크포인트 복원 시도 ══
+async function tryRestoreBtCheckpoint() {
+  var saved = await loadBtCheckpoint();
+  if(!saved || saved.nextIdx === undefined) return;
+
+  // 복원 가능한 상태인지 확인 (nextIdx > 0 이어야 의미 있음)
+  if(saved.nextIdx <= 0 && saved.totalProcessed <= 0) return;
+
+  var savedAt = saved.savedAt ? new Date(saved.savedAt).toLocaleString('ko-KR') : '알 수 없음';
+  tlog('📂 저장된 체크포인트 발견! nextIdx:'+saved.nextIdx+' | 처리:'+saved.totalProcessed+'회 | '+savedAt,'tw');
+
+  // BT_STATE에 메타 정보만 미리 복원 (allDraws는 실행 시 로드)
+  BT_STATE.currentProbMap    = saved.currentProbMap || null;
+  BT_STATE.cumulativeHistory = saved.cumulativeHistory || [];
+  BT_STATE.cumulativeBonus   = saved.cumulativeBonus || [];
+  BT_STATE.nextIdx           = saved.nextIdx || 0;
+  BT_STATE.TRAIN_UNTIL       = saved.TRAIN_UNTIL || 900;
+  BT_STATE.totalProcessed    = saved.totalProcessed || 0;
+  BT_STATE.repeatRound       = saved.repeatRound || 0;
+
+  if(saved.btStats) BT.stats = saved.btStats;
+  if(saved.btAutoNext !== undefined) $('btAutoNext').checked = saved.btAutoNext;
+  if(saved.btRepeat !== undefined)   $('btRepeat').checked   = saved.btRepeat;
+
+  BT_REPEAT_COUNT = BT_STATE.repeatRound;
+  $('btRepeatCount').textContent = BT_REPEAT_COUNT;
+  $('btTotalDraws').textContent  = BT_STATE.totalProcessed;
+
+  // 복원 안내 배너 표시
+  $('btPanel').style.display = 'block';
+  $('btStatus').textContent  = '📂 이전 체크포인트 복원됨 — '+savedAt+' | '+BT_STATE.nextIdx+'회차까지 완료';
+  $('btCheckpoint').textContent = BT_STATE.TRAIN_UNTIL + BT_STATE.nextIdx + '회차까지 (이전 세션)';
+  $('btnBtContinue').style.display = 'inline-block';
+  $('btnBtRestart').style.display  = 'inline-block';
+  btUpdateStats();
+
+  tlog('✅ 체크포인트 복원 완료 — [▶ 계속] 버튼으로 이어서 진행하세요','ts');
+}
+
 function btShowBalls(predicted, actual) {
   function makeBall(n, hit) {
     var d = document.createElement('div');
@@ -1020,7 +1102,7 @@ function btUpdateCheckpointUI() {
 async function runBacktestChunk(resume) {
   if(BT.running) return;
 
-  // 처음 시작이면 데이터 로드
+  // 처음 시작이면 데이터 로드 (복원 후 이어가기 시도할 때도 allDraws가 없으면 로드)
   if(!resume || BT_STATE.allDraws.length === 0) {
     $('btStatus').textContent = '당첨 데이터 로딩 중...';
     var _lh = await loadLottoHistory();
@@ -1030,7 +1112,12 @@ async function runBacktestChunk(resume) {
       $('btStatus').textContent = '❌ 데이터 부족 (최소 100회차 필요)';
       return;
     }
-    BT_STATE.TRAIN_UNTIL = Math.min(900, Math.floor(BT_STATE.allDraws.length * 0.75));
+    // ★ 복원된 상태인데 allDraws만 없었던 경우 TRAIN_UNTIL 유지
+    if(resume && BT_STATE.nextIdx > 0) {
+      tlog('📂 allDraws 재로드 완료 ('+BT_STATE.allDraws.length+'회차) — 체크포인트 이어서 진행','ti');
+    } else {
+      BT_STATE.TRAIN_UNTIL = Math.min(900, Math.floor(BT_STATE.allDraws.length * 0.75));
+    }
   }
 
   var allDraws    = BT_STATE.allDraws;
@@ -1206,6 +1293,9 @@ async function runBacktestChunk(resume) {
     tlog('💾 '+endIdx+'번째 회차까지 저장 — iter:'+savedIter,'ti');
     $('btnApplyBt').style.display = 'block';
 
+    // ★ 로컬 체크포인트 저장 (브라우저 재진입 시 복원용)
+    await saveBtCheckpoint();
+
     renderCurve();
     renderHM(currentProbMap);
     renderBar(currentProbMap);
@@ -1233,6 +1323,7 @@ async function runBacktestChunk(resume) {
       $('btStatus').textContent = '✅ 전체 완료! 총 '+BT_STATE.totalProcessed+'회차 | 반복 '+BT_STATE.repeatRound+'회';
       $('btnBtContinue').style.display = 'none';
       $('btnBtRestart').style.display = 'inline-block';
+      await clearBtCheckpoint();  // ★ 완료 시 체크포인트 삭제
     } else {
       $('btStatus').textContent = '⏸ '+endIdx+'회차 완료 (남은 '+remain+'회) — 계속하거나 결과 확인';
       btLog('── '+endIdx+'회 체크포인트 ── 남은 '+remain+'회', '#58a6ff');
@@ -1266,6 +1357,7 @@ async function runBacktest() {
   BT_STATE.nextIdx = 0;
   BT_STATE.totalProcessed = 0;
   BT_STATE.allDraws = [];
+  await clearBtCheckpoint();  // ★ 로컬 체크포인트 초기화
   runBacktestChunk(false);
 }
 
@@ -1313,6 +1405,9 @@ $('btnApplyBt').onclick = applyBacktestToLive;
   }
   if(typeof CubeEngine!=='undefined'&&CubeEngine.version)
     $('verBadge').textContent='v'+CubeEngine.version;
+
+  // ★ 백테스팅 체크포인트 복원 시도
+  await tryRestoreBtCheckpoint();
 })();
 </script>
 </body>
