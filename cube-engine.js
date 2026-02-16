@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.1.0  (Universal)             ║
+ * ║              CubeEngine  v2.2.0  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · HistorySet 최적화         ║
+ * ║   + StatCache · WeightedProb · ColorZone · Bonus         ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0 변경사항:
@@ -11,6 +11,12 @@
  *   3. historySet (Set<string>) — isTooSimilar O(N) → O(1) 비교 대체
  *      → 후보 생성 루프 속도 대폭 향상
  *   4. ML probMap 과 통계 probMap 블렌딩 (statWeight 옵션)
+ *
+ * v2.2.0 변경사항:
+ *   5. buildStatCache() — colorZone(구역별 빈도/간격) 추가
+ *   6. buildWeightedProb() — bonusHistory 보너스 빈도 학습 추가
+ *   7. scoreCombo() — 색상 구역 균형 점수(colorZoneWeight) 추가
+ *   8. 신규 옵션: bonusHistory, bonusWeight, colorZoneWeight
  */
 
 'use strict';
@@ -47,6 +53,11 @@ var DEFAULTS = {
     // ── v2.1.0 신규 ──
     statWeight: 0.35,      // 통계 확률과 ML 확률 블렌딩 비율 (0~1)
     recentWindow: 30,       // 최근 N회 빈도 계산 윈도우
+
+    // ── v2.2.0 신규 ──
+    bonusHistory  : null,  // 보너스 번호 배열 [b1, b2, ...] (로또 보너스볼)
+    bonusWeight   : 0.15,  // 보너스 빈도가 probMap에 기여하는 비율
+    colorZoneWeight: 0.20, // scoreCombo 내 색상 구역 균형 점수 비율
 
     // ── 콜백 ──
     onProgress: null,
@@ -128,7 +139,44 @@ function buildStatCache(history, cfg) {
         });
     }
 
-    return { freq: freq, recentFreq: recentFreq, gap: gap, reHit: reHit };
+    // ── v2.2.0: 색상 구역별 빈도 (1-10 노랑, 11-20 파랑, 21-30 빨강, 31-40 회색, 41-45 초록) ──
+    var COLOR_ZONES = [
+        { name: 'yellow', min: 1,  max: 10 },
+        { name: 'blue',   min: 11, max: 20 },
+        { name: 'red',    min: 21, max: 30 },
+        { name: 'gray',   min: 31, max: 40 },
+        { name: 'green',  min: 41, max: 45 }
+    ];
+    var colorZone = {};   // 번호 → 소속 구역명
+    var zoneFreq  = {};   // 구역명 → 출현 빈도
+    var zoneGap   = {};   // 구역명 → 마지막 출현 이후 경과
+    COLOR_ZONES.forEach(function(z) { zoneFreq[z.name] = 0; zoneGap[z.name] = total; });
+    for (var ci = 1; ci <= cfg.items; ci++) {
+        COLOR_ZONES.forEach(function(z) {
+            if (ci >= z.min && ci <= z.max) colorZone[ci] = z.name;
+        });
+    }
+    if (history && history.length > 0) {
+        history.forEach(function(draw) {
+            COLOR_ZONES.forEach(function(z) {
+                if (draw.some(function(n){ return n >= z.min && n <= z.max; })) zoneFreq[z.name]++;
+            });
+        });
+        for (var zi = total - 1; zi >= 0; zi--) {
+            COLOR_ZONES.forEach(function(z) {
+                if (zoneGap[z.name] === total &&
+                    history[zi].some(function(n){ return n >= z.min && n <= z.max; })) {
+                    zoneGap[z.name] = total - zi - 1;
+                }
+            });
+        }
+    }
+
+    return {
+        freq: freq, recentFreq: recentFreq, gap: gap, reHit: reHit,
+        colorZone: colorZone, zoneFreq: zoneFreq, zoneGap: zoneGap,
+        COLOR_ZONES: COLOR_ZONES
+    };
 }
 
 /* ─────────────────────────────────────────
@@ -142,18 +190,48 @@ function buildWeightedProb(cfg, validPool, stat) {
     var probMap   = {};
     var totalDraw = cfg.history ? cfg.history.length : 1;
     var window    = cfg.recentWindow || 30;
+    var bw        = cfg.bonusWeight || 0.15;
+
+    // ── v2.2.0: 보너스 번호 빈도 사전 계산 ──
+    var bonusFreq = {};
+    validPool.forEach(function(n) { bonusFreq[n] = 0; });
+    var bonusTotal = 0;
+    if (cfg.bonusHistory && cfg.bonusHistory.length > 0) {
+        bonusTotal = cfg.bonusHistory.length;
+        cfg.bonusHistory.forEach(function(b) {
+            if (bonusFreq[b] !== undefined) bonusFreq[b]++;
+        });
+    }
+
+    // ── v2.2.0: 색상 구역 간격 점수 (오래 안 나온 구역 번호 우대) ──
+    var zoneGapScore = {};
+    if (stat.zoneGap && stat.colorZone) {
+        validPool.forEach(function(n) {
+            var zone = stat.colorZone[n];
+            var zg   = zone ? (stat.zoneGap[zone] || 0) : 0;
+            zoneGapScore[n] = Math.min(zg / 10, 1);
+        });
+    } else {
+        validPool.forEach(function(n) { zoneGapScore[n] = 0; });
+    }
 
     validPool.forEach(function(n) {
         var freqScore   = stat.freq[n]       / totalDraw;
         var recentScore = stat.recentFreq[n] / window;
         var gapScore    = Math.min(stat.gap[n] / 20, 1);
         var reHitScore  = stat.reHit[n]      / totalDraw;
+        var bonusScore  = bonusTotal > 0 ? bonusFreq[n] / bonusTotal : 0;
+        var zgScore     = zoneGapScore[n];
 
+        // 기존 가중치 조정 + 보너스·구역 추가
+        // 합계 = 0.25+0.25+0.15+0.15+bw(0.15)+0.05 = 1.00
         probMap[n] =
-            freqScore   * 0.30 +
-            recentScore * 0.30 +
-            gapScore    * 0.20 +
-            reHitScore  * 0.20;
+            freqScore   * 0.25 +
+            recentScore * 0.25 +
+            gapScore    * 0.15 +
+            reHitScore  * 0.15 +
+            bonusScore  * bw   +
+            zgScore     * 0.05;
     });
 
     return probMap;
@@ -257,12 +335,40 @@ function buildHistorySet(history) {
     );
 }
 
-function scoreCombo(combo, probMap) {
+function getColorZone(n) {
+    if (n <= 10) return 0;
+    if (n <= 20) return 1;
+    if (n <= 30) return 2;
+    if (n <= 40) return 3;
+    return 4;
+}
+
+function scoreCombo(combo, probMap, cfg) {
     var score = 0;
     combo.forEach(function(item) { score += (probMap[item] || 0) * 100; });
+
+    // 분산 점수 (기존)
     var mean     = combo.reduce(function(a, b) { return a + b; }, 0) / combo.length;
     var variance = combo.reduce(function(s, x) { return s + Math.pow(x - mean, 2); }, 0) / combo.length;
     score += Math.sqrt(variance) * 0.5;
+
+    // ── v2.2.0: 색상 구역 균형 점수 ──
+    // 실제 로또 당첨 패턴 분석: 5개 구역 중 3~4개 분포가 가장 많이 출현
+    var czw = (cfg && cfg.colorZoneWeight !== undefined) ? cfg.colorZoneWeight : 0.20;
+    if (czw > 0) {
+        var zoneCnt = [0, 0, 0, 0, 0];
+        combo.forEach(function(n) { zoneCnt[getColorZone(n)]++; });
+        var usedZones   = zoneCnt.filter(function(c){ return c > 0; }).length; // 사용된 구역 수
+        var maxInZone   = Math.max.apply(null, zoneCnt);                        // 한 구역에 최대 집중도
+        // 3~4구역 분포 시 최대 점수, 1~2구역 집중 시 감점, 5구역 고르면 보통
+        var zoneScore   = 0;
+        if (usedZones >= 3 && maxInZone <= 3) zoneScore = 10;   // 이상적
+        else if (usedZones === 2)              zoneScore = 3;
+        else if (usedZones === 1)              zoneScore = -5;   // 한 구역 집중 감점
+        else                                   zoneScore = 7;   // 4~5구역 고른 분포
+        score += zoneScore * czw * 5;
+    }
+
     return score;
 }
 
@@ -304,7 +410,7 @@ async function generate(options) {
         cfg.initialPool.forEach(function(items) {
             var arr = items.slice().sort(function(a, b) { return a - b; });
             if (arr.every(function(n) { return validPool.indexOf(n) >= 0; })) {
-                pool.push({ items: arr, score: scoreCombo(arr, probMap) });
+                pool.push({ items: arr, score: scoreCombo(arr, probMap, cfg) });
             }
         });
     }
@@ -365,7 +471,7 @@ async function generate(options) {
             var arr = Array.from(combo).sort(function(a, b) { return a - b; });
             // v2.1.0: O(1) historySet 체크 (기존 isTooSimilar O(N) 대체)
             if (!historySet.has(JSON.stringify(arr))) {
-                candidates.push({ items: arr, score: scoreCombo(arr, probMap) });
+                candidates.push({ items: arr, score: scoreCombo(arr, probMap, cfg) });
             }
         }
 
@@ -435,7 +541,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version      : '2.1.0'
+            version      : '2.2.0'
         }
     };
 
@@ -451,7 +557,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version         : '2.1.0',
+    version         : '2.2.0',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },

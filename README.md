@@ -306,3 +306,11 @@ index.html       ← 학습 상태 모니터링 대시보드 (Firebase 연동)
 |       |      | **③ 실행 시 단계별 상태 표시 — "당첨 데이터 로딩 중" → "학습 상태 로딩 중" → "엔진 실행" 순으로 명확화** |
 |       |      | **④ path-box에 당첨 히스토리 경로/상태 행 추가 — 초기 로드 시 회차수 사전 확인** |
 |       |      | **⑤ renderStat — numbers 배열/2D 배열 양쪽 형태 모두 수용하도록 수정** |
+
+| **2.2.0** | **2026-02-16** | **실제 당첨 데이터 기반 학습 강화** |
+|       |      | **① buildStatCache() — 색상 구역(1-10 노랑/11-20 파랑/21-30 빨강/31-40 회색/41-45 초록) 빈도·간격 사전 계산** |
+|       |      | **② buildWeightedProb() — bonusHistory(보너스 번호 배열) 학습 추가. 보너스 번호가 자주 나온 번호에 확률 가중** |
+|       |      | **③ scoreCombo() — colorZoneWeight(색상 구역 균형 점수) 추가. 3~4구역 분포 조합에 가산점, 1구역 집중 시 감점** |
+|       |      | **④ 신규 옵션: bonusHistory(null), bonusWeight(0.15), colorZoneWeight(0.20)** |
+|       |      | **⑤ recommend.js — bonusNums 추출 후 bonusHistory로 엔진 전달, colorZoneWeight 활성화** |
+|       |      | **[기존 방법 유지] history 기반 ML·StatCache·historySet 모두 그대로 동작** |
