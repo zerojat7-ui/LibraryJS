@@ -1,14 +1,15 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.2.2  (Universal)             ║
+ * ║              CubeEngine  v2.2.3  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.2  ║
+ * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.3  ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
  * v2.2.0: colorZone + bonusHistory 학습 / scoreCombo 색상균형 점수
  * v2.2.1: 라운드별 probMap 동적갱신 제거 (번호 쏠림 버그 수정)
  * v2.2.2: 랜덤 가중치(0.95~1.05) 적용 / 기당첨 완전일치 제외
+ * v2.2.3: 4중 쏠림 방지 (정규화 강화 / statWeight↓ / 확률 재분배 / 랜덤 강제)
  */
 
 'use strict';
@@ -43,7 +44,7 @@ var DEFAULTS = {
     topCandidatePool: 15,
 
     // ── v2.1.0 신규 ──
-    statWeight: 0.35,
+    statWeight: 0.15,  // v2.2.3: 0.35 → 0.15 (ML 비중 증가, 과적합 방지)
     recentWindow: 30,
 
     // ── v2.2.0 신규 ──
@@ -257,12 +258,23 @@ function buildMLProbabilities(cfg, validPool, stat) {
         });
     }
 
-    // ── 정규화 ──
-    var avg = 0;
-    validPool.forEach(function(num) { avg += probMap[num]; });
+    // ── 정규화 + 강제 분산 (v2.2.3 개선) ──
+    var avg = 0, min = 1, max = 0;
+    validPool.forEach(function(num) { 
+        avg += probMap[num];
+        min = Math.min(min, probMap[num]);
+        max = Math.max(max, probMap[num]);
+    });
     avg /= n;
     var scale = (cfg.pick / n) / avg;
     validPool.forEach(function(num) { probMap[num] = Math.min(probMap[num] * scale, 1); });
+    
+    // 최소값을 평균의 30% 이상으로 보장 (극단적 쏠림 방지)
+    validPool.forEach(function(num) {
+        if (probMap[num] < avg * 0.3) {
+            probMap[num] = avg * 0.3 + Math.random() * avg * 0.2;
+        }
+    });
 
     return probMap;
 }
@@ -383,6 +395,19 @@ async function generate(options) {
     for (var round = 0; round < cfg.rounds; round++) {
         await new Promise(function(r) { setTimeout(r, 0); });
 
+        // v2.2.3: 매 10라운드마다 확률 재분배 (상위 번호 고착 방지)
+        if (round % 10 === 0 && round > 0) {
+            var used = {};
+            pool.slice(0, 50).forEach(function(p) {
+                p.items.forEach(function(n) { used[n] = (used[n] || 0) + 1; });
+            });
+            validPool.forEach(function(n) {
+                if (used[n] && used[n] > 5) probMap[n] *= 0.9;  // 많이 쓰인 번호 감소
+                if (!used[n]) probMap[n] *= 1.1;  // 안 쓰인 번호 증가
+                probMap[n] = Math.min(Math.max(probMap[n], 0.01), 0.95); // 범위 제한
+            });
+        }
+
         // v2.2.1: 라운드별 동적 probMap 갱신 제거 (번호 쏠림 원인)
         var cubeResults = await Promise.all(
             validPool.map(function(num) { return evolveHybridCube(num, probMap[num], cfg); })
@@ -394,9 +419,16 @@ async function generate(options) {
         for (var ci = 0; ci < cfg.poolSize; ci++) {
             var combo    = new Set();
             var mustCount = Math.min(2 + Math.floor(Math.random() * 2), cfg.pick);
+            var randomCount = Math.floor(Math.random() * 2); // v2.2.3: 0~1개는 완전 랜덤
 
+            // 상위에서 선택
             for (var m = 0; m < mustCount && combo.size < cfg.pick; m++) {
                 combo.add(topItems[Math.floor(Math.random() * Math.min(cfg.topCandidatePool, topItems.length))]);
+            }
+
+            // v2.2.3: 완전 랜덤에서 선택 (다양성 확보)
+            for (var r = 0; r < randomCount && combo.size < cfg.pick; r++) {
+                combo.add(validPool[Math.floor(Math.random() * validPool.length)]);
             }
 
             var att = 0;
@@ -486,7 +518,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.2.2'
+            version  : '2.2.3'
         }
     };
 
@@ -502,7 +534,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.2.2',
+    version  : '2.2.3',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
