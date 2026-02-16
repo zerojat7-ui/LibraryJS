@@ -989,6 +989,23 @@ async function runBacktest() {
   $('btStatus').textContent = '① 초기 학습 중 (1~'+TRAIN_UNTIL+'회차)...';
 
   try {
+    // ── 반복 2회차부터: 이전 백테스팅 probMap 로드 (50:50 블렌딩용) ──
+    var prevBtProbMap = null;
+    if(BT_REPEAT_COUNT > 0) {
+      try {
+        var prevSnap = await BT_DOC.get();
+        if(prevSnap.exists && prevSnap.data().probMap) {
+          prevBtProbMap = {};
+          var raw = prevSnap.data().probMap;
+          for(var n=1; n<=45; n++) {
+            var key = 'n' + n;
+            prevBtProbMap[n] = raw[key] != null ? parseFloat(raw[key]) : 0.1;
+          }
+          tlog('📂 이전 백테스팅 probMap 로드 ('+BT_REPEAT_COUNT+'회차 누적)','ti');
+        }
+      } catch(e) { tlog('이전 probMap 로드 실패, 초기값 사용: '+e.message,'tw'); }
+    }
+
     // ① 초기 학습: 1~TRAIN_UNTIL 로 엔진 실행
     var trainNums  = trainDraws.map(function(d){ return d.numbers; });
     var trainBonus = trainDraws.map(function(d){ return d.bonus; }).filter(function(b){ return b&&b>=1&&b<=45; });
@@ -1004,8 +1021,17 @@ async function runBacktest() {
     );
 
     // probMap을 변경 가능한 객체로 복사
+    // 반복 2회차부터: 이전 probMap 50% + 이번 초기학습 50% 블렌딩
     var currentProbMap = {};
-    for(var n=1; n<=45; n++) currentProbMap[n] = initResult.probMap[n] || 0.1;
+    if(prevBtProbMap) {
+      for(var n=1; n<=45; n++) {
+        currentProbMap[n] = prevBtProbMap[n] * 0.5 + (initResult.probMap[n] || 0.1) * 0.5;
+      }
+      tlog('🔀 50:50 블렌딩 적용 — 이전 학습 + 이번 초기학습','ti');
+      btLog('50:50 블렌딩 (이전학습+신규초기학습)', '#69c8f0');
+    } else {
+      for(var n=1; n<=45; n++) currentProbMap[n] = initResult.probMap[n] || 0.1;
+    }
 
     tlog('✅ 초기 학습 완료 — bestScore: '+initResult.scores[0].toFixed(2),'ts');
     btLog('초기학습 완료 ('+TRAIN_UNTIL+'회차) best:'+initResult.scores[0].toFixed(2), '#00ff88');

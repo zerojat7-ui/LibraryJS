@@ -1,4 +1,4 @@
-# CubeEngine v2.2.5
+# CubeEngine v2.3.0
 
 > Hybrid Cube Evolution × ML Probability Engine  
 > 범용 확률 기반 조합 추천 라이브러리
@@ -10,10 +10,10 @@
 ```
 과거 데이터 학습 (선택)
     ↓
-StatCache 사전 계산 (freq / recentFreq / gap / reHit)   ← v2.1.0 신규
+StatCache 사전 계산 (freq / recentFreq / gap / reHit / zoneTrend)   ← v2.3.0 zoneTrend 추가
     ↓
 ML 확률 모델 구성 (sigmoid + 가중치)
-    + 통계 기반 WeightedProb 블렌딩                      ← v2.1.0 신규
+    + 통계 기반 WeightedProb 블렌딩 (trend 10% 반영)                 ← v2.3.0 업데이트
     ↓
 각 항목을 독립적으로 큐브 진화
     ↓
@@ -396,3 +396,89 @@ index.html       ← 학습 상태 모니터링 대시보드 (Firebase 연동)
   3. 🔥 Firebase: collection/document 경로 직접 입력, 학습 공유 토글
   4. 📋 코드 생성: 현재 설정 → 복사 가능한 JS 코드 자동 생성
 - 하단 공통: 테스트 실행 (Firebase 없이 로컬), 설정 저장/불러오기 (LocalStorage), 초기화
+
+## ver 2.3.0
+2026-02-16
+
+### 색상 구역 변화 트렌드 반영 (cube-engine.js)
+
+**문제**
+- 기존 색상 구역 처리(`zoneGap`, `zoneFreq`)는 단순 출현 여부/간격만 측정
+- 최근 흐름(강세/약세 트렌드)이 probMap에 반영되지 않음
+
+**buildStatCache — zoneTrend 계산 추가**
+- 최근 100회를 전반 50회 / 후반 50회로 분리
+- 각 구역별 회차당 평균 출현수 계산 (출현여부 0/1 아닌 실제 개수)
+- `trendRatio = 후반평균 / 전반평균`
+  - `> 1.0` : 강세 (최근에 더 많이 출현)
+  - `< 1.0` : 약세 (최근에 덜 출현)
+  - 범위 클램프: `0.5 ~ 2.0`
+- 전반 평균 0인 구역(한번도 미출현): 후반 출현 시 1.5 처리
+
+**buildWeightedProb — trend 가중치 10% 신규 반영**
+- `trendScore[n]` = 해당 번호 구역의 trendRatio → 0~1 정규화
+- 강세 구역 번호 확률 상승 / 약세 구역 번호 확률 하락
+- 기존 가중치 조정 (합계 1.00 유지):
+  ```
+  freqScore   0.25 → 0.22
+  recentScore 0.25 → 0.22
+  gapScore    0.15 → 0.13
+  reHitScore  0.15 → 0.13
+  bonusScore  0.15 유지
+  zgScore     0.05 유지
+  trendScore  0.10 신규
+  ```
+
+**scoreCombo — 트렌드 강세/약세 보너스 반영**
+- 강세 구역(`trendRatio >= 1.2`) 번호 포함 시 `+(ratio-1.0)*3` 점 보너스
+- 약세 구역(`trendRatio <= 0.8`) 번호 포함 시 `-(1.0-ratio)*2` 점 감점
+- `colorZoneWeight` 비율 적용 (기본 0.20)
+- `scoreCombo(combo, probMap, cfg, stat)` — stat 파라미터 추가
+
+**검증 결과**
+- 황구역 약세(ratio=0.504), 청구역 강세(ratio=2.000) 시나리오
+- 청구역 평균 확률 / 황구역 평균 확률 = 1.207 (청 > 황) 정상 확인
+
+## ver 2.4.0
+2026-02-16
+
+### 6종 트렌드 전면 반영 (cube-engine.js)
+
+**공통 구조**: 최근 100회 → 전반50 / 후반50 분리 → `ratio = 후반평균 / 전반평균`
+- `> 1.0` 강세 / `< 1.0` 약세 / 범위 클램프 `0.5 ~ 2.0`
+
+**buildStatCache — trends 객체 추가**
+
+| # | 트렌드 | 계산 방식 |
+|---|---|---|
+| ① | 홀짝 `oddRatio` | 회차당 홀수 개수 전반/후반 비교 |
+| ② | AC값 `acAvg / acTrend` | 회차당 AC값 평균 전반/후반 비교 |
+| ③ | 연속성 `consecAvg / consecTrend` | 회차당 연속쌍 수 전반/후반 비교 |
+| ④ | 끝수 `tailTrend[0~9]` | 끝자리별 출현수 전반/후반 비교 |
+| ⑤ | 번호합 `sumAvg / sumTrend` | 회차당 번호합 평균 전반/후반 비교 |
+| ⑥ | 고저 `highRatio` | 회차당 고번호(23~45) 개수 전반/후반 비교 |
+
+**buildWeightedProb — 가중치 재설계 (합계 1.00)**
+```
+freqScore      0.18  (←0.22)
+recentScore    0.18  (←0.22)
+gapScore       0.10  (←0.13)
+reHitScore     0.10  (←0.13)
+bonusScore     0.15
+zoneGapScore   0.04  (←0.05)
+colorTrend     0.08  (←0.10)
+oddTrend       0.07  신규 ← ① 홀짝
+tailTrend      0.07  신규 ← ④ 끝수
+highTrend      0.03  신규 ← ⑥ 고저
+```
+
+**scoreCombo — AC/연속성/번호합 트렌드 보너스 추가**
+- ② AC값: 조합 AC가 acAvg ±1 이내 → 보너스, ±2 초과 → 감점
+- ③ 연속성: 조합 연속쌍 수가 consecAvg ±0.5 이내 → 보너스
+- ⑤ 번호합: 조합 합계가 sumAvg ±10 이내 → 보너스, ±20 초과 → 감점
+- 모두 `colorZoneWeight` 비율 적용
+
+**트렌드 무시 안전장치**
+- history 없음 → trends 전항목 기본값(1.0) → 영향 없음
+- history 10회 미만 → 계산 스킵
+- stat/trends 없음 → scoreCombo 트렌드 블록 스킵

@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.2.5  (Universal)             ║
+ * ║              CubeEngine  v2.4.0  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.5  ║
+ * ║   + StatCache · WeightedProb · MultiTrend v2.4.0         ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
@@ -12,6 +12,14 @@
  * v2.2.3: 4중 쏠림 방지 (정규화 강화 / statWeight↓ / 확률 재분배 / 랜덤 강제)
  * v2.2.4: Firebase 블렌딩 구조 수정 (ML 학습 후→전, 누적 고착 해결)
  * v2.2.5: 색상 구역 통계 최근 100회로 제한 (오래된 패턴 배제)
+ * v2.3.0: 색상 구역 변화 트렌드 반영 (zoneTrend)
+ * v2.4.0: 6종 트렌드 전면 반영 (최근 100회 전반50/후반50 비교)
+ *         ① 홀짝 트렌드  → 홀수 번호 probMap 조정
+ *         ② AC값 트렌드  → scoreCombo AC 목표범위 보너스
+ *         ③ 연속성 트렌드 → scoreCombo 연속쌍 보너스/감점
+ *         ④ 끝수 트렌드  → 끝자리 강세 번호 probMap 조정
+ *         ⑤ 번호합 트렌드 → scoreCombo 합계 범위 보너스
+ *         ⑥ 고저 트렌드  → 고번호(23~45)/저번호(1~22) probMap 조정
  */
 
 'use strict';
@@ -136,12 +144,15 @@ function buildStatCache(history, cfg) {
 
     // ── v2.2.0: 색상 구역 (1-10노랑/11-20파랑/21-30빨강/31-40회색/41-45초록) ──
     // v2.2.5: 최근 100회만 사용 (오래된 패턴 배제)
+    // v2.3.0: 전반50/후반50 분포 비교 → zoneTrend 계산
     var COLOR_ZONES = [
         {name:'yellow',min:1,max:10},{name:'blue',min:11,max:20},
         {name:'red',min:21,max:30},{name:'gray',min:31,max:40},{name:'green',min:41,max:45}
     ];
     var colorZone={}, zoneFreq={}, zoneGap={};
-    COLOR_ZONES.forEach(function(z){zoneFreq[z.name]=0; zoneGap[z.name]=total;});
+    // v2.3.0: 구역별 트렌드 (후반/전반 평균 비율, 1.0=변화없음, >1.0=강세, <1.0=약세)
+    var zoneTrend = {};
+    COLOR_ZONES.forEach(function(z){zoneFreq[z.name]=0; zoneGap[z.name]=total; zoneTrend[z.name]=1.0;});
     for(var ci=1;ci<=cfg.items;ci++){
         COLOR_ZONES.forEach(function(z){if(ci>=z.min&&ci<=z.max) colorZone[ci]=z.name;});
     }
@@ -149,7 +160,7 @@ function buildStatCache(history, cfg) {
         // 색상 통계는 최근 100회만 사용
         var colorWindow = Math.min(100, history.length);
         var colorHistory = history.slice(-colorWindow);
-        
+
         colorHistory.forEach(function(draw){
             COLOR_ZONES.forEach(function(z){
                 if(draw.some(function(n){return n>=z.min&&n<=z.max;})) zoneFreq[z.name]++;
@@ -161,17 +172,142 @@ function buildStatCache(history, cfg) {
                     zoneGap[z.name]=colorHistory.length-zi-1;
             });
         }
+
+        // ── v2.3.0: 색상 트렌드 계산 ──
+        // 최근 100회를 전반(오래된 50회) / 후반(최근 50회)으로 분리
+        // 각 구역별 회차당 평균 출현수(6개 중 몇 개) 비교
+        // trendRatio = 후반평균 / 전반평균
+        //   > 1.0 : 강세 (최근에 더 많이 출현)
+        //   < 1.0 : 약세 (최근에 덜 출현)
+        //   = 1.0 : 보합
+        if(colorHistory.length >= 10) {
+            var half     = Math.floor(colorHistory.length / 2);
+            var firstHalf  = colorHistory.slice(0, half);      // 전반 (오래된 쪽)
+            var secondHalf = colorHistory.slice(-half);         // 후반 (최근 쪽)
+
+            COLOR_ZONES.forEach(function(z) {
+                // 각 회차에서 해당 구역 번호가 몇 개 출현했는지 합산
+                var firstSum = 0, secondSum = 0;
+                firstHalf.forEach(function(draw) {
+                    draw.forEach(function(n) { if(n>=z.min&&n<=z.max) firstSum++; });
+                });
+                secondHalf.forEach(function(draw) {
+                    draw.forEach(function(n) { if(n>=z.min&&n<=z.max) secondSum++; });
+                });
+                var firstAvg  = firstSum  / firstHalf.length;   // 전반 회차당 평균
+                var secondAvg = secondSum / secondHalf.length;   // 후반 회차당 평균
+
+                // 전반 평균이 0이면 (한 번도 안 나온 구역) 후반만 보고 강세 판단
+                if(firstAvg === 0) {
+                    zoneTrend[z.name] = secondAvg > 0 ? 1.5 : 1.0;
+                } else {
+                    // trendRatio 범위: 0.5 ~ 2.0 으로 클램프
+                    zoneTrend[z.name] = Math.min(Math.max(secondAvg / firstAvg, 0.5), 2.0);
+                }
+            });
+        }
     }
+    // ── v2.4.0: 6종 트렌드 계산 (최근 100회 전반50/후반50 공통 구조) ──
+    // 모든 트렌드: ratio = 후반평균 / 전반평균 (>1.0=강세, <1.0=약세, 범위 0.5~2.0)
+    var trendWindow = Math.min(100, history ? history.length : 0);
+    var trendHistory = history ? history.slice(-trendWindow) : [];
+    var trends = {
+        oddRatio   : 1.0,  // ① 홀짝: 홀수 비율 트렌드
+        acAvg      : 0,    // ② AC값: 평균 AC 트렌드 (후반 평균값)
+        acTrend    : 1.0,  //    AC 트렌드 비율
+        consecAvg  : 0,    // ③ 연속성: 평균 연속쌍 수 트렌드 (후반 평균값)
+        consecTrend: 1.0,  //    연속성 트렌드 비율
+        tailTrend  : {},   // ④ 끝수: 끝자리(0~9)별 트렌드 비율
+        sumAvg     : 0,    // ⑤ 번호합: 평균 합계 트렌드 (후반 평균값)
+        sumTrend   : 1.0,  //    합계 트렌드 비율
+        highRatio  : 1.0   // ⑥ 고저: 고번호(23~45) 비율 트렌드
+    };
+    // 끝수 초기화
+    for(var td=0; td<=9; td++) trends.tailTrend[td] = 1.0;
+
+    if(trendHistory.length >= 10) {
+        var th     = Math.floor(trendHistory.length / 2);
+        var tFirst = trendHistory.slice(0, th);   // 전반
+        var tSecond= trendHistory.slice(-th);      // 후반
+
+        function trendRatio(firstVal, secondVal) {
+            if(firstVal === 0) return secondVal > 0 ? 1.5 : 1.0;
+            return Math.min(Math.max(secondVal / firstVal, 0.5), 2.0);
+        }
+
+        // ① 홀짝 트렌드: 회차당 홀수 개수 평균
+        var oddFirst = 0, oddSecond = 0;
+        tFirst.forEach(function(d){ d.forEach(function(n){ if(n%2===1) oddFirst++; }); });
+        tSecond.forEach(function(d){ d.forEach(function(n){ if(n%2===1) oddSecond++; }); });
+        trends.oddRatio = trendRatio(oddFirst/tFirst.length, oddSecond/tSecond.length);
+
+        // ② AC값 트렌드: 회차당 AC값 평균
+        // AC = 조합에서 가능한 모든 차이값 중 서로 다른 값의 수 - (pick-1)
+        function calcAC(draw) {
+            var s = draw.slice().sort(function(a,b){return a-b;});
+            var diffs = new Set();
+            for(var i=0;i<s.length;i++) for(var j=i+1;j<s.length;j++) diffs.add(s[j]-s[i]);
+            return diffs.size - (s.length - 1);
+        }
+        var acFirst = 0, acSecond = 0;
+        tFirst.forEach(function(d){ acFirst  += calcAC(d); });
+        tSecond.forEach(function(d){ acSecond += calcAC(d); });
+        trends.acAvg    = acSecond / tSecond.length;
+        trends.acTrend  = trendRatio(acFirst/tFirst.length, trends.acAvg);
+
+        // ③ 연속성 트렌드: 회차당 연속쌍(인접번호) 수 평균
+        function calcConsec(draw) {
+            var s = draw.slice().sort(function(a,b){return a-b;}), c=0;
+            for(var i=0;i<s.length-1;i++) if(s[i+1]-s[i]===1) c++;
+            return c;
+        }
+        var cFirst = 0, cSecond = 0;
+        tFirst.forEach(function(d){ cFirst  += calcConsec(d); });
+        tSecond.forEach(function(d){ cSecond += calcConsec(d); });
+        trends.consecAvg   = cSecond / tSecond.length;
+        trends.consecTrend = trendRatio(cFirst/tFirst.length, trends.consecAvg);
+
+        // ④ 끝수 트렌드: 끝자리(0~9)별 출현 수 평균
+        var tailFirst = {}, tailSecond = {};
+        for(var td=0;td<=9;td++){ tailFirst[td]=0; tailSecond[td]=0; }
+        tFirst.forEach(function(d){ d.forEach(function(n){ tailFirst[n%10]++; }); });
+        tSecond.forEach(function(d){ d.forEach(function(n){ tailSecond[n%10]++; }); });
+        for(var td=0;td<=9;td++){
+            trends.tailTrend[td] = trendRatio(tailFirst[td]/tFirst.length, tailSecond[td]/tSecond.length);
+        }
+
+        // ⑤ 번호합 트렌드: 회차당 번호합 평균
+        var sumFirst = 0, sumSecond = 0;
+        tFirst.forEach(function(d){ d.forEach(function(n){ sumFirst  += n; }); });
+        tSecond.forEach(function(d){ d.forEach(function(n){ sumSecond += n; }); });
+        trends.sumAvg   = sumSecond / tSecond.length;
+        trends.sumTrend = trendRatio(sumFirst/tFirst.length, trends.sumAvg);
+
+        // ⑥ 고저 트렌드: 회차당 고번호(23~45) 개수 평균
+        var highFirst = 0, highSecond = 0;
+        tFirst.forEach(function(d){ d.forEach(function(n){ if(n>=23) highFirst++; }); });
+        tSecond.forEach(function(d){ d.forEach(function(n){ if(n>=23) highSecond++; }); });
+        trends.highRatio = trendRatio(highFirst/tFirst.length, highSecond/tSecond.length);
+    }
+
     return { freq:freq, recentFreq:recentFreq, gap:gap, reHit:reHit,
-             colorZone:colorZone, zoneFreq:zoneFreq, zoneGap:zoneGap, COLOR_ZONES:COLOR_ZONES };
+             colorZone:colorZone, zoneFreq:zoneFreq, zoneGap:zoneGap,
+             COLOR_ZONES:COLOR_ZONES, zoneTrend:zoneTrend, trends:trends };
 }
 
 /* ─────────────────────────────────────────
    v2.1.0 ② WeightedProb — 통계 기반 확률
-   · freqScore  : 전체 빈도 30%
-   · recentScore: 최근 빈도 30%
-   · gapScore   : 출현 간격 (오래 쉰 번호 우대) 20%
-   · reHitScore : 연속 재출현 가능성 20%
+   가중치 구성 (합계 1.00):
+   · freqScore   : 전체 빈도       0.18 (←0.22)
+   · recentScore : 최근 빈도       0.18 (←0.22)
+   · gapScore    : 출현 간격       0.10 (←0.13)
+   · reHitScore  : 연속 재출현     0.10 (←0.13)
+   · bonusScore  : 보너스 빈도     0.15
+   · zgScore     : 구역 간격       0.04 (←0.05)
+   · colorTrend  : 색상 트렌드     0.08 (←0.10)
+   · oddTrend    : 홀짝 트렌드     0.07 (v2.4.0)
+   · tailTrend   : 끝수 트렌드     0.07 (v2.4.0)
+   · highTrend   : 고저 트렌드     0.03 (v2.4.0)
 ───────────────────────────────────────── */
 function buildWeightedProb(cfg, validPool, stat) {
     var probMap   = {};
@@ -186,6 +322,7 @@ function buildWeightedProb(cfg, validPool, stat) {
         bonusTotal = cfg.bonusHistory.length;
         cfg.bonusHistory.forEach(function(b){if(bonusFreq[b]!==undefined)bonusFreq[b]++;});
     }
+
     // 구역 간격 점수
     var zoneGapScore = {};
     if(stat.zoneGap&&stat.colorZone){
@@ -195,20 +332,86 @@ function buildWeightedProb(cfg, validPool, stat) {
         });
     } else { validPool.forEach(function(n){zoneGapScore[n]=0;}); }
 
+    // 색상 트렌드 점수 (v2.3.0)
+    var colorTrendScore = {};
+    if(stat.zoneTrend&&stat.colorZone){
+        var ratios = [];
+        validPool.forEach(function(n){
+            var z = stat.colorZone[n];
+            if(z && stat.zoneTrend[z] !== undefined) ratios.push(stat.zoneTrend[z]);
+        });
+        var avgRatio = ratios.length > 0
+            ? ratios.reduce(function(a,b){return a+b;},0) / ratios.length : 1.0;
+        validPool.forEach(function(n){
+            var z     = stat.colorZone[n];
+            var ratio = (z && stat.zoneTrend[z] !== undefined) ? stat.zoneTrend[z] : 1.0;
+            colorTrendScore[n] = Math.min(Math.max((ratio - 0.5) / 1.5, 0), 1);
+        });
+    } else { validPool.forEach(function(n){ colorTrendScore[n] = 0.5; }); }
+
+    // ── v2.4.0: 홀짝 트렌드 점수 ──
+    // oddRatio > 1.0 → 최근 홀수 강세 → 홀수 번호 점수 상승
+    var oddTrendScore = {};
+    if(stat.trends){
+        var or = stat.trends.oddRatio || 1.0;
+        // or 범위 0.5~2.0 → 정규화 0~1
+        var orNorm = (or - 0.5) / 1.5;
+        validPool.forEach(function(n){
+            if(n % 2 === 1) {
+                // 홀수: oddRatio 강세면 점수 높게
+                oddTrendScore[n] = Math.min(Math.max(orNorm, 0), 1);
+            } else {
+                // 짝수: oddRatio 약세(짝수 강세)면 점수 높게
+                oddTrendScore[n] = Math.min(Math.max(1 - orNorm, 0), 1);
+            }
+        });
+    } else { validPool.forEach(function(n){ oddTrendScore[n] = 0.5; }); }
+
+    // ── v2.4.0: 끝수 트렌드 점수 ──
+    // 각 번호의 끝자리(n%10)에 해당하는 tailTrend 비율 → 정규화
+    var tailTrendScore = {};
+    if(stat.trends && stat.trends.tailTrend){
+        var tt = stat.trends.tailTrend;
+        validPool.forEach(function(n){
+            var ratio = tt[n%10] !== undefined ? tt[n%10] : 1.0;
+            tailTrendScore[n] = Math.min(Math.max((ratio - 0.5) / 1.5, 0), 1);
+        });
+    } else { validPool.forEach(function(n){ tailTrendScore[n] = 0.5; }); }
+
+    // ── v2.4.0: 고저 트렌드 점수 ──
+    // highRatio > 1.0 → 고번호 강세 → 23~45 점수 상승
+    var highTrendScore = {};
+    if(stat.trends){
+        var hr = stat.trends.highRatio || 1.0;
+        var hrNorm = (hr - 0.5) / 1.5;
+        validPool.forEach(function(n){
+            if(n >= 23) {
+                highTrendScore[n] = Math.min(Math.max(hrNorm, 0), 1);
+            } else {
+                highTrendScore[n] = Math.min(Math.max(1 - hrNorm, 0), 1);
+            }
+        });
+    } else { validPool.forEach(function(n){ highTrendScore[n] = 0.5; }); }
+
     validPool.forEach(function(n) {
         var freqScore   = stat.freq[n]       / totalDraw;
         var recentScore = stat.recentFreq[n] / window;
         var gapScore    = Math.min(stat.gap[n] / 20, 1);
         var reHitScore  = stat.reHit[n]      / totalDraw;
-        var bonusScore  = bonusTotal>0 ? bonusFreq[n]/bonusTotal : 0;
-        var zgScore     = zoneGapScore[n];
+        var bonusScore  = bonusTotal > 0 ? bonusFreq[n] / bonusTotal : 0;
+
         probMap[n] =
-            freqScore   * 0.25 +
-            recentScore * 0.25 +
-            gapScore    * 0.15 +
-            reHitScore  * 0.15 +
-            bonusScore  * bw   +
-            zgScore     * 0.05;
+            freqScore            * 0.18 +
+            recentScore          * 0.18 +
+            gapScore             * 0.10 +
+            reHitScore           * 0.10 +
+            bonusScore           * bw   +
+            zoneGapScore[n]      * 0.04 +
+            colorTrendScore[n]   * 0.08 +
+            oddTrendScore[n]     * 0.07 +
+            tailTrendScore[n]    * 0.07 +
+            highTrendScore[n]    * 0.03;
+        // 합계: 0.18+0.18+0.10+0.10+0.15+0.04+0.08+0.07+0.07+0.03 = 1.00
     });
     return probMap;
 }
@@ -330,12 +533,13 @@ function buildHistorySet(history) {
 
 function getColorZone(n){return n<=10?0:n<=20?1:n<=30?2:n<=40?3:4;}
 
-function scoreCombo(combo, probMap, cfg) {
+function scoreCombo(combo, probMap, cfg, stat) {
     var score = 0;
     combo.forEach(function(item) { score += (probMap[item] || 0) * 100; });
     var mean     = combo.reduce(function(a, b) { return a + b; }, 0) / combo.length;
     var variance = combo.reduce(function(s, x) { return s + Math.pow(x - mean, 2); }, 0) / combo.length;
     score += Math.sqrt(variance) * 0.5;
+
     // 색상 구역 균형 점수 (v2.2.0)
     var czw = (cfg&&cfg.colorZoneWeight!==undefined)?cfg.colorZoneWeight:0.20;
     if(czw>0){
@@ -346,6 +550,62 @@ function scoreCombo(combo, probMap, cfg) {
         var zs=usedZones>=3&&maxInZone<=3?10:usedZones===2?3:usedZones===1?-5:7;
         score+=zs*czw*5;
     }
+
+    // 색상 트렌드 보너스 (v2.3.0)
+    if(stat && stat.zoneTrend && stat.colorZone){
+        var trendBonus = 0;
+        combo.forEach(function(n){
+            var z     = stat.colorZone[n];
+            var ratio = z ? (stat.zoneTrend[z] || 1.0) : 1.0;
+            if(ratio >= 1.2)      trendBonus += (ratio - 1.0) * 3;
+            else if(ratio <= 0.8) trendBonus -= (1.0 - ratio) * 2;
+        });
+        score += trendBonus * czw;
+    }
+
+    // ── v2.4.0: AC값 트렌드 보너스 ──
+    // 조합의 AC값이 최근 트렌드 평균(acAvg)에 가까울수록 보너스
+    if(stat && stat.trends && stat.trends.acAvg > 0){
+        var comboAC = (function(){
+            var s = combo.slice().sort(function(a,b){return a-b;});
+            var diffs = new Set();
+            for(var i=0;i<s.length;i++) for(var j=i+1;j<s.length;j++) diffs.add(s[j]-s[i]);
+            return diffs.size - (s.length - 1);
+        })();
+        var acDiff = Math.abs(comboAC - stat.trends.acAvg);
+        // acAvg ±1 이내: +보너스, ±2 이상: -감점
+        var acBonus = acDiff <= 1 ? (2 - acDiff) * 1.5 : -(acDiff - 1) * 0.5;
+        score += acBonus * czw;
+    }
+
+    // ── v2.4.0: 연속성 트렌드 보너스 ──
+    // 조합의 연속쌍 수가 최근 트렌드 평균(consecAvg)에 가까울수록 보너스
+    if(stat && stat.trends){
+        var comboCons = (function(){
+            var s = combo.slice().sort(function(a,b){return a-b;}), c=0;
+            for(var i=0;i<s.length-1;i++) if(s[i+1]-s[i]===1) c++;
+            return c;
+        })();
+        var cAvg  = stat.trends.consecAvg || 0;
+        var cDiff = Math.abs(comboCons - cAvg);
+        // consecAvg ±0.5 이내: +보너스
+        var cBonus = cDiff <= 0.5 ? 2.0 : cDiff <= 1.0 ? 0.5 : -(cDiff - 1.0) * 0.5;
+        score += cBonus * czw;
+    }
+
+    // ── v2.4.0: 번호합 트렌드 보너스 ──
+    // 조합의 합계가 최근 트렌드 평균(sumAvg)에 가까울수록 보너스
+    if(stat && stat.trends && stat.trends.sumAvg > 0){
+        var comboSum = combo.reduce(function(a,b){return a+b;}, 0);
+        var sAvg     = stat.trends.sumAvg;
+        // ±10 이내: 보너스, ±20 초과: 감점
+        var sDiff = Math.abs(comboSum - sAvg);
+        var sBonus = sDiff <= 10 ? (10 - sDiff) * 0.15
+                   : sDiff <= 20 ? 0
+                   : -(sDiff - 20) * 0.05;
+        score += sBonus * czw;
+    }
+
     return score;
 }
 
@@ -387,7 +647,7 @@ async function generate(options) {
         cfg.initialPool.forEach(function(items) {
             var arr = items.slice().sort(function(a, b) { return a - b; });
             if (arr.every(function(n) { return validPool.indexOf(n) >= 0; })) {
-                pool.push({ items: arr, score: scoreCombo(arr, probMap, cfg) });
+                pool.push({ items: arr, score: scoreCombo(arr, probMap, cfg, stat) });
             }
         });
     }
@@ -454,7 +714,7 @@ async function generate(options) {
             var arr = Array.from(combo).sort(function(a, b) { return a - b; });
             // v2.1.0: O(1) historySet 체크 (기존 isTooSimilar O(N) 대체)
             if (!historySet.has(JSON.stringify(arr))) {
-                candidates.push({ items: arr, score: scoreCombo(arr, probMap, cfg) });
+                candidates.push({ items: arr, score: scoreCombo(arr, probMap, cfg, stat) });
             }
         }
 
@@ -529,7 +789,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.2.5'
+            version  : '2.4.0'
         }
     };
 
@@ -545,7 +805,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.2.5',
+    version  : '2.4.0',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
