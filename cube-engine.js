@@ -1,15 +1,16 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.2.3  (Universal)             ║
+ * ║              CubeEngine  v2.2.4  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.3  ║
+ * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.4  ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
  * v2.2.0: colorZone + bonusHistory 학습 / scoreCombo 색상균형 점수
  * v2.2.1: 라운드별 probMap 동적갱신 제거 (번호 쏠림 버그 수정)
- * v2.2.2: 랜덤 가중치(0.95~1.05) 적용 / 기당첨 완전일치 제외
+ * v2.2.2: randomBoost(0.95~1.05) 적용 / 기당첨 완전일치 제외
  * v2.2.3: 4중 쏠림 방지 (정규화 강화 / statWeight↓ / 확률 재분배 / 랜덤 강제)
+ * v2.2.4: Firebase 블렌딩 구조 수정 (ML 학습 후→전, 누적 고착 해결)
  */
 
 'use strict';
@@ -30,7 +31,7 @@ var DEFAULTS = {
     // ── Firebase 연동 (옵션) ──
     externalProbMap : null,
     initialPool     : null,
-    persistenceWeight: 0.7,
+    persistenceWeight: 0.3,  // v2.2.4: 0.7 → 0.3 (외부 학습 의존도 감소)
 
     // ── ML & 진화 파라미터 ──
     lambda    : 0.18,
@@ -213,8 +214,23 @@ function buildMLProbabilities(cfg, validPool, stat) {
     var n      = validPool.length;
     var scores = {};
 
+    // ── 초기값: sin/cos 기반 ──
     validPool.forEach(function(num) { scores[num] = baseScore(num); });
+    
+    // ── v2.2.4: Firebase 외부 학습으로 초기값 조정 (구조 개선) ──
+    if (cfg.externalProbMap) {
+        validPool.forEach(function(num) {
+            if (cfg.externalProbMap[num] !== undefined) {
+                // 이전 확률에서 평균을 뺀 "편차"를 scores에 반영
+                var prevProb = cfg.externalProbMap[num];
+                var avgProb = cfg.pick / validPool.length;  // 기본 기댓값
+                var deviation = (prevProb - avgProb) * 5;  // 편차를 scores 스케일로 변환
+                scores[num] += deviation * cfg.persistenceWeight;
+            }
+        });
+    }
 
+    // ── ML 학습 (과거 데이터) ──
     if (cfg.history && cfg.history.length > 0) {
         var total = cfg.history.length;
         cfg.history.forEach(function(draw, index) {
@@ -239,23 +255,12 @@ function buildMLProbabilities(cfg, validPool, stat) {
     var probMap = {};
     if (stat && cfg.history && cfg.history.length > 0) {
         var statMap = buildWeightedProb(cfg, validPool, stat);
-        var sw      = Math.min(Math.max(cfg.statWeight || 0.35, 0), 1);
+        var sw      = Math.min(Math.max(cfg.statWeight || 0.15, 0), 1);
         validPool.forEach(function(num) {
             probMap[num] = mlMap[num] * (1 - sw) + (statMap[num] || 0) * sw;
         });
     } else {
         validPool.forEach(function(num) { probMap[num] = mlMap[num]; });
-    }
-
-    // ── Firebase 외부 확률 블렌딩 ──
-    if (cfg.externalProbMap) {
-        validPool.forEach(function(num) {
-            if (cfg.externalProbMap[num] !== undefined) {
-                var blended = cfg.externalProbMap[num] * cfg.persistenceWeight
-                            + probMap[num] * (1 - cfg.persistenceWeight);
-                probMap[num] = Math.min(Math.max(blended, 0.01), 0.95);
-            }
-        });
     }
 
     // ── 정규화 + 강제 분산 (v2.2.3 개선) ──
@@ -518,7 +523,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.2.3'
+            version  : '2.2.4'
         }
     };
 
@@ -534,7 +539,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.2.3',
+    version  : '2.2.4',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
