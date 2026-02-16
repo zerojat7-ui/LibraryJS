@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.2.4  (Universal)             ║
+ * ║              CubeEngine  v2.2.5  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.4  ║
+ * ║   + StatCache · WeightedProb · ColorZone · Bonus v2.2.5  ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
@@ -11,6 +11,7 @@
  * v2.2.2: randomBoost(0.95~1.05) 적용 / 기당첨 완전일치 제외
  * v2.2.3: 4중 쏠림 방지 (정규화 강화 / statWeight↓ / 확률 재분배 / 랜덤 강제)
  * v2.2.4: Firebase 블렌딩 구조 수정 (ML 학습 후→전, 누적 고착 해결)
+ * v2.2.5: 색상 구역 통계 최근 100회로 제한 (오래된 패턴 배제)
  */
 
 'use strict';
@@ -134,6 +135,7 @@ function buildStatCache(history, cfg) {
     }
 
     // ── v2.2.0: 색상 구역 (1-10노랑/11-20파랑/21-30빨강/31-40회색/41-45초록) ──
+    // v2.2.5: 최근 100회만 사용 (오래된 패턴 배제)
     var COLOR_ZONES = [
         {name:'yellow',min:1,max:10},{name:'blue',min:11,max:20},
         {name:'red',min:21,max:30},{name:'gray',min:31,max:40},{name:'green',min:41,max:45}
@@ -144,15 +146,19 @@ function buildStatCache(history, cfg) {
         COLOR_ZONES.forEach(function(z){if(ci>=z.min&&ci<=z.max) colorZone[ci]=z.name;});
     }
     if(history&&history.length>0){
-        history.forEach(function(draw){
+        // 색상 통계는 최근 100회만 사용
+        var colorWindow = Math.min(100, history.length);
+        var colorHistory = history.slice(-colorWindow);
+        
+        colorHistory.forEach(function(draw){
             COLOR_ZONES.forEach(function(z){
                 if(draw.some(function(n){return n>=z.min&&n<=z.max;})) zoneFreq[z.name]++;
             });
         });
-        for(var zi=total-1;zi>=0;zi--){
+        for(var zi=colorHistory.length-1;zi>=0;zi--){
             COLOR_ZONES.forEach(function(z){
-                if(zoneGap[z.name]===total&&history[zi].some(function(n){return n>=z.min&&n<=z.max;}))
-                    zoneGap[z.name]=total-zi-1;
+                if(zoneGap[z.name]===total&&colorHistory[zi].some(function(n){return n>=z.min&&n<=z.max;}))
+                    zoneGap[z.name]=colorHistory.length-zi-1;
             });
         }
     }
@@ -523,7 +529,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.2.4'
+            version  : '2.2.5'
         }
     };
 
@@ -539,7 +545,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.2.4',
+    version  : '2.2.5',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },

@@ -1,4 +1,4 @@
-# CubeEngine v2.2.4
+# CubeEngine v2.2.5
 
 > Hybrid Cube Evolution × ML Probability Engine  
 > 범용 확률 기반 조합 추천 라이브러리
@@ -136,7 +136,7 @@ const result = await CubeEngine.generate({ items: 45, pick: 6 });
         historySize: 1017,
         elapsed: 12340,
         generatedAt: "2026-02-16T...",
-        version: "2.2.4"
+        version: "2.2.5"
     }
 }
 ```
@@ -352,6 +352,12 @@ index.html       ← 학습 상태 모니터링 대시보드 (Firebase 연동)
 |       |      | **— 원래 의도대로 sin/cos 초기값 조정 목적으로만 사용** |
 |       |      | **— 이전 학습 → ML 학습 → StatCache 블렌딩 → 정규화 순서로 변경** |
 |       |      | **③ 효과: 매 실행마다 과거 데이터로 새롭게 학습, 누적 편향 제거** |
+| **2.2.5** | **2026-02-16** | **색상 구역 통계 최근 100회로 제한** |
+|       |      | **① buildStatCache() 색상 구역 계산 범위 제한** |
+|       |      | **— 전체 이력 사용 → 최근 100회만 사용** |
+|       |      | **— 오래된 패턴(수년 전) 영향력 배제, 최근 트렌드 반영** |
+|       |      | **② zoneFreq, zoneGap 계산에 적용** |
+|       |      | **③ 효과: 더욱 균등한 확률 분포, 시대별 트렌드 변화 적응** |
 
 ---
 
