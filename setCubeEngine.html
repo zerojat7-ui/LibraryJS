@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CubeEngine — 엔진 설정</title>
+<style>
+:root {
+  --bg:#0d1117; --card:#161b22; --border:#30363d;
+  --green:#00ff88; --blue:#58a6ff; --yellow:#f5a623;
+  --red:#ff6b6b; --purple:#a371f7; --text:#e6edf3; --sub:#8b949e;
+  --orange:#f0883e;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',monospace;background:var(--bg);color:var(--text);padding:12px;min-height:100vh}
+
+/* 헤더 */
+.hd{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;margin-bottom:12px}
+.hd-title{font-size:16px;font-weight:bold;color:var(--green)}
+.hd-sub{font-size:11px;color:var(--sub)}
+.back-btn{background:#21262d;color:var(--blue);border:1px solid var(--border);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:bold;text-decoration:none;cursor:pointer}
+
+/* 탭 */
+.tabs{display:flex;gap:4px;margin-bottom:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:4px}
+.tab{flex:1;padding:8px;border:none;border-radius:7px;font-size:12px;font-weight:bold;cursor:pointer;background:transparent;color:var(--sub);transition:all .15s}
+.tab.active{background:#238636;color:#fff}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* 카드 */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
+.card-ttl{font-size:11px;font-weight:bold;color:var(--sub);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%}
+.dg{background:var(--green)}.db{background:var(--blue)}.dy{background:var(--yellow)}.dp{background:var(--purple)}.dr{background:var(--red)}.do{background:var(--orange)}
+
+/* 설정 행 */
+.opt{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.opt-label{font-size:12px;color:var(--text);min-width:130px;flex-shrink:0}
+.opt-desc{font-size:10px;color:var(--sub);margin-top:2px}
+.opt-info{flex:1;min-width:200px}
+.opt-val{font-size:13px;font-weight:bold;color:var(--yellow);min-width:50px;text-align:right}
+
+/* 슬라이더 */
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;border-radius:2px;background:#30363d;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--green);border:2px solid #0d1117;box-shadow:0 0 5px var(--green);cursor:pointer}
+input[type=range].blue::-webkit-slider-thumb{background:var(--blue);box-shadow:0 0 5px var(--blue)}
+input[type=range].purple::-webkit-slider-thumb{background:var(--purple);box-shadow:0 0 5px var(--purple)}
+input[type=range].yellow::-webkit-slider-thumb{background:var(--yellow);box-shadow:0 0 5px var(--yellow)}
+input[type=range].orange::-webkit-slider-thumb{background:var(--orange);box-shadow:0 0 5px var(--orange)}
+
+/* 숫자 입력 */
+input[type=number]{background:#21262d;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:13px;width:80px;text-align:center}
+input[type=number]:focus{outline:none;border-color:var(--green)}
+
+/* 프리셋 버튼 */
+.preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:4px}
+.preset-btn{padding:10px 8px;border:1px solid var(--border);border-radius:8px;background:#21262d;color:var(--text);font-size:11px;font-weight:bold;cursor:pointer;text-align:center;transition:all .15s}
+.preset-btn:hover{border-color:var(--blue);color:var(--blue)}
+.preset-btn.active{border-color:var(--green);color:var(--green);background:#0d2818}
+.preset-name{font-size:13px;margin-bottom:2px}
+.preset-sub{font-size:10px;color:var(--sub);font-weight:normal}
+
+/* Firebase 설정 */
+.fb-input{width:100%;background:#21262d;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:12px;font-family:monospace}
+.fb-input:focus{outline:none;border-color:var(--blue)}
+
+/* 버튼 */
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{padding:11px 18px;border:none;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;transition:all .15s}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-green{background:#238636;color:#fff}
+.btn-green:hover{background:#2ea043}
+.btn-blue{background:#1f4068;color:var(--blue);border:1px solid var(--blue)}
+.btn-blue:hover{background:#1a3558}
+.btn-red{background:#6e1414;color:#fff}
+.btn-red:hover{background:#b91c1c}
+.btn-gray{background:#21262d;color:var(--text);border:1px solid var(--border)}
+
+/* 결과 로그 */
+.log{background:#0d1117;border-radius:8px;padding:10px;font-size:11px;font-family:monospace;max-height:180px;overflow-y:auto;border:1px solid var(--border)}
+.log-ts{color:var(--green)}.log-ti{color:var(--blue)}.log-tw{color:var(--yellow)}.log-te{color:var(--red)}
+
+/* 상태 배지 */
+.badge{display:inline-block;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:bold}
+.badge-ok{background:#0d2818;color:var(--green);border:1px solid var(--green)}
+.badge-err{background:#2d1414;color:var(--red);border:1px solid var(--red)}
+.badge-warn{background:#2d2000;color:var(--yellow);border:1px solid var(--yellow)}
+
+/* 현재 값 요약 */
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.summary-item{background:#0d1117;border-radius:8px;padding:8px;text-align:center}
+.summary-val{font-size:16px;font-weight:bold;color:var(--yellow)}
+.summary-key{font-size:10px;color:var(--sub);margin-top:2px}
+
+/* 섹션 구분선 */
+.divider{border:none;border-top:1px solid var(--border);margin:14px 0}
+
+/* toggle */
+.toggle-wrap{display:flex;align-items:center;gap:8px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:#30363d;border-radius:11px;cursor:pointer;transition:.2s}
+.toggle-slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked + .toggle-slider{background:var(--green)}
+.toggle input:checked + .toggle-slider:before{transform:translateX(18px)}
+
+/* 코드 박스 */
+.codebox{background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:#79c0ff;overflow-x:auto;white-space:pre;margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="hd">
+  <div>
+    <div class="hd-title">⚙️ CubeEngine 설정</div>
+    <div class="hd-sub">엔진 파라미터 · Firebase 경로 · 학습 실행</div>
+  </div>
+  <a href="index.html" class="back-btn">← 대시보드</a>
+</div>
+
+<!-- 탭 -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('preset')">🎛 프리셋</button>
+  <button class="tab" onclick="switchTab('learning')">🧠 학습 파라미터</button>
+  <button class="tab" onclick="switchTab('firebase')">🔥 Firebase</button>
+  <button class="tab" onclick="switchTab('code')">📋 코드 생성</button>
+</div>
+
+<!-- ══ 탭1: 프리셋 ══ -->
+<div id="tab-preset" class="tab-panel active">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>게임 유형 선택</div>
+    <div class="preset-grid" id="presetGrid"></div>
+    <div style="margin-top:10px;font-size:11px;color:var(--sub)" id="presetDesc">프리셋을 선택하면 해당 게임에 최적화된 기본값이 자동 적용됩니다.</div>
+  </div>
+  <div class="card">
+    <div class="card-ttl"><div class="dot db"></div>현재 설정 요약</div>
+    <div class="summary-grid">
+      <div class="summary-item"><div class="summary-val" id="sumItems">45</div><div class="summary-key">번호 범위</div></div>
+      <div class="summary-item"><div class="summary-val" id="sumPick">6</div><div class="summary-key">선택 개수</div></div>
+      <div class="summary-item"><div class="summary-val" id="sumRounds">50</div><div class="summary-key">라운드</div></div>
+      <div class="summary-item"><div class="summary-val" id="sumPool">2500</div><div class="summary-key">Pool Size</div></div>
+      <div class="summary-item"><div class="summary-val" id="sumTopN">5</div><div class="summary-key">Top N</div></div>
+      <div class="summary-item"><div class="summary-val" id="sumEvolve">80ms</div><div class="summary-key">진화 시간</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 탭2: 학습 파라미터 ══ -->
+<div id="tab-learning" class="tab-panel">
+
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>기본 설정</div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">번호 범위 (items)</div>
+        <div class="opt-desc">1~N 범위에서 번호 추출. 로또6/45=45, 파워볼=69</div>
+        <input type="range" id="s_items" min="10" max="90" value="45" class="blue" oninput="syncOpt('items',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_items">45</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">선택 개수 (pick)</div>
+        <div class="opt-desc">최종 조합에 포함될 번호 수</div>
+        <input type="range" id="s_pick" min="1" max="25" value="6" class="blue" oninput="syncOpt('pick',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_pick">6</span></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">라운드 수 (rounds)</div>
+        <div class="opt-desc">많을수록 정밀하지만 느림. turbo=15, lotto645=50</div>
+        <input type="range" id="s_rounds" min="5" max="100" value="50" oninput="syncOpt('rounds',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_rounds">50</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">Pool Size</div>
+        <div class="opt-desc">라운드당 생성 조합 수. 클수록 다양하지만 느림</div>
+        <input type="range" id="s_poolSize" min="100" max="5000" step="100" value="2500" class="blue" oninput="syncOpt('poolSize',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_poolSize">2500</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">Top N 결과</div>
+        <div class="opt-desc">반환할 최고 조합 수</div>
+        <input type="range" id="s_topN" min="1" max="20" value="5" class="purple" oninput="syncOpt('topN',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_topN">5</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">진화 시간 (evolveTime)</div>
+        <div class="opt-desc">개별 번호 진화 반복 ms. 클수록 정밀</div>
+        <input type="range" id="s_evolveTime" min="10" max="300" step="10" value="80" class="orange" oninput="syncOpt('evolveTime',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_evolveTime">80</span>ms</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl"><div class="dot dp"></div>확률 가중치</div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">StatCache 가중치 (statWeight)</div>
+        <div class="opt-desc">통계 기반 확률 비중. 높을수록 과거 빈도 의존↑ (0~1)</div>
+        <input type="range" id="s_statWeight" min="0" max="100" value="15" class="purple" oninput="syncOpt('statWeight',this.value/100,true)">
+      </div>
+      <div class="opt-val"><span id="v_statWeight">0.15</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">최근 회차 윈도우 (recentWindow)</div>
+        <div class="opt-desc">최근 N회차 빈도 계산 범위</div>
+        <input type="range" id="s_recentWindow" min="5" max="100" value="30" class="purple" oninput="syncOpt('recentWindow',this.value)">
+      </div>
+      <div class="opt-val"><span id="v_recentWindow">30</span>회</div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">보너스 가중치 (bonusWeight)</div>
+        <div class="opt-desc">보너스 번호 빈도의 확률 기여 비중 (0~1)</div>
+        <input type="range" id="s_bonusWeight" min="0" max="100" value="15" class="yellow" oninput="syncOpt('bonusWeight',this.value/100,true)">
+      </div>
+      <div class="opt-val"><span id="v_bonusWeight">0.15</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">색상구역 균형 (colorZoneWeight)</div>
+        <div class="opt-desc">번호 색상 구역 균형 점수 비중. 0이면 비활성</div>
+        <input type="range" id="s_colorZoneWeight" min="0" max="100" value="20" class="yellow" oninput="syncOpt('colorZoneWeight',this.value/100,true)">
+      </div>
+      <div class="opt-val"><span id="v_colorZoneWeight">0.20</span></div>
+    </div>
+
+    <div class="opt">
+      <div class="opt-info">
+        <div class="opt-label">Firebase 학습 의존도 (persistenceWeight)</div>
+        <div class="opt-desc">이전 학습(Firebase) 반영 비중. 낮을수록 새 학습 우선</div>
+        <input type="range" id="s_persistenceWeight" min="0" max="100" value="30" class="orange" oninput="syncOpt('persistenceWeight',this.value/100,true)">
+      </div>
+      <div class="opt-val"><span id="v_persistenceWeight">0.30</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl"><div class="dot dy"></div>번호 범위 제한 (선택)</div>
+    <div class="opt" style="flex-wrap:nowrap;gap:16px">
+      <div>
+        <div class="opt-label" style="min-width:auto">시작 번호</div>
+        <input type="number" id="s_rangeStart" min="1" max="45" value="1" onchange="syncOpt('rangeStart',this.value)">
+      </div>
+      <div style="font-size:18px;color:var(--sub);padding-top:18px">~</div>
+      <div>
+        <div class="opt-label" style="min-width:auto">끝 번호</div>
+        <input type="number" id="s_rangeEnd" min="1" max="90" value="45" onchange="syncOpt('rangeEnd',this.value)">
+      </div>
+      <div style="font-size:11px;color:var(--sub);padding-top:18px">비워두면 전체 범위 사용</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 탭3: Firebase ══ -->
+<div id="tab-firebase" class="tab-panel">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dr"></div>Firebase 프로젝트 설정</div>
+    <div style="font-size:11px;color:var(--yellow);margin-bottom:12px;">⚠️ 본인의 Firebase 프로젝트 정보를 입력하세요. 로또 웹과 다른 프로젝트를 사용하면 학습이 완전 독립됩니다.</div>
+
+    <div style="margin-bottom:10px">
+      <div class="opt-label" style="margin-bottom:4px">Collection 경로</div>
+      <input class="fb-input" id="fb_col" value="lotto_history" placeholder="ex) lotto_history">
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="opt-label" style="margin-bottom:4px">학습 상태 문서 ID (shared_engine_state)</div>
+      <input class="fb-input" id="fb_doc" value="shared_engine_state" placeholder="ex) shared_engine_state">
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="opt-label" style="margin-bottom:4px">백테스팅 문서 ID</div>
+      <input class="fb-input" id="fb_btdoc" value="backtest_engine_state" placeholder="ex) backtest_engine_state">
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="opt-label" style="margin-bottom:4px">당첨 데이터 문서 경로</div>
+      <input class="fb-input" id="fb_history" value="lotto_history/lotto645_history" placeholder="ex) collection/document">
+    </div>
+
+    <hr class="divider">
+
+    <div class="opt-label" style="margin-bottom:8px">학습 저장 옵션</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label class="toggle-wrap">
+        <div class="toggle"><input type="checkbox" id="fb_merge" checked><div class="toggle-slider"></div></div>
+        <span style="font-size:12px">가중 평균 병합 (누적 학습 보존)</span>
+      </label>
+      <label class="toggle-wrap">
+        <div class="toggle"><input type="checkbox" id="fb_shared" checked><div class="toggle-slider"></div></div>
+        <span style="font-size:12px">다른 사용자와 학습 공유</span>
+      </label>
+      <label class="toggle-wrap">
+        <div class="toggle"><input type="checkbox" id="fb_backtest_sep" checked><div class="toggle-slider"></div></div>
+        <span style="font-size:12px">백테스팅 경로 분리 (권장)</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl"><div class="dot do"></div>연결 상태</div>
+    <div id="fbStatus" style="font-size:12px;color:var(--sub)">대시보드에서 Firebase 연결 상태를 확인하세요.</div>
+  </div>
+</div>
+
+<!-- ══ 탭4: 코드 생성 ══ -->
+<div id="tab-code" class="tab-panel">
+  <div class="card">
+    <div class="card-ttl"><div class="dot dg"></div>현재 설정으로 생성된 코드</div>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:8px">이 코드를 복사해서 자신의 앱에 붙여넣으면 현재 설정이 그대로 적용됩니다.</div>
+    <div class="codebox" id="generatedCode">// 설정을 변경하면 자동으로 코드가 생성됩니다</div>
+    <div class="btn-row">
+      <button class="btn btn-blue" onclick="copyCode()">📋 코드 복사</button>
+      <button class="btn btn-gray" onclick="generateCode()">🔄 새로고침</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl"><div class="dot db"></div>기본 사용법</div>
+    <div class="codebox">// 1. 스크립트 로드
+&lt;script src="cube-engine.js"&gt;&lt;/script&gt;
+
+// 2. 기본 사용 (withPreset)
+const result = await CubeEngine.generate(
+  CubeEngine.withPreset('lotto645', {
+    history: 당첨번호_2D배열,
+    bonusHistory: 보너스번호_배열,
+    topN: 5
+  })
+);
+
+// 3. 결과
+console.log(result.results);  // 추천 조합 배열
+console.log(result.probMap);  // 번호별 확률맵
+console.log(result.scores);   // 조합별 점수</div>
+  </div>
+</div>
+
+<!-- ══ 하단 실행 패널 ══ -->
+<div class="card" style="margin-top:4px;border-color:#238636">
+  <div class="card-ttl"><div class="dot dg"></div>테스트 학습 실행</div>
+  <div style="font-size:11px;color:var(--sub);margin-bottom:10px">현재 설정으로 엔진을 실행해 결과를 미리 확인합니다. (Firebase 연동 없이 로컬 실행)</div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <div style="font-size:12px;color:var(--sub)">상태:</div>
+    <span id="runStatus" class="badge badge-warn">대기 중</span>
+    <div style="font-size:12px;color:var(--sub);margin-left:8px">Best Score:</div>
+    <span id="runBest" style="color:var(--yellow);font-weight:bold;font-size:13px">-</span>
+  </div>
+  <div style="background:#21262d;border-radius:4px;height:6px;margin-bottom:10px;overflow:hidden">
+    <div id="runBar" style="height:100%;background:linear-gradient(90deg,var(--green),var(--blue));width:0%;transition:width .3s;border-radius:4px"></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-green" id="btnTest" onclick="runTest()">▶ 테스트 실행</button>
+    <button class="btn btn-gray" onclick="saveSettings()">💾 설정 저장 (LocalStorage)</button>
+    <button class="btn btn-gray" onclick="loadSettings()">📂 저장된 설정 불러오기</button>
+    <button class="btn btn-red" onclick="resetSettings()">↺ 기본값 초기화</button>
+  </div>
+  <div class="log" id="runLog" style="margin-top:10px"></div>
+</div>
+
+<!-- Firebase & CubeEngine -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="cube-engine.js"></script>
+
+<script>
+// ══ 상태 ══
+var CFG = {
+  items: 45, pick: 6, rounds: 50, poolSize: 2500, topN: 5,
+  evolveTime: 80, statWeight: 0.15, recentWindow: 30,
+  bonusWeight: 0.15, colorZoneWeight: 0.20, persistenceWeight: 0.30,
+  rangeStart: null, rangeEnd: null
+};
+
+var PRESETS = {
+  'lotto645'    : { items:45, pick:6, rounds:50, poolSize:2500, evolveTime:80,  topN:5,  label:'🇰🇷 로또 6/45',     sub:'한국' },
+  'lotto638'    : { items:38, pick:6, rounds:50, poolSize:2500, evolveTime:80,  topN:5,  label:'🎱 로또 6/38',     sub:'일부 지역' },
+  'powerball'   : { items:69, pick:5, rounds:60, poolSize:3000, evolveTime:100, topN:5,  label:'🇺🇸 파워볼',       sub:'미국' },
+  'megamillions': { items:70, pick:5, rounds:60, poolSize:3000, evolveTime:100, topN:5,  label:'💰 메가밀리언',    sub:'미국' },
+  'euromillions': { items:50, pick:5, rounds:55, poolSize:2800, evolveTime:90,  topN:5,  label:'🇪🇺 유로밀리언',   sub:'유럽' },
+  'keno'        : { items:80, pick:20, rounds:40, poolSize:3500, evolveTime:150, topN:3, label:'🎰 케노',          sub:'80중 20' },
+  'turbo'       : { items:45, pick:6, rounds:15,  poolSize:800,  evolveTime:40,  topN:5,  label:'⚡ 터보 (빠름)',  sub:'경량 모드' },
+  'custom'      : { items:45, pick:6, rounds:50,  poolSize:2500, evolveTime:80,  topN:5,  label:'🔧 커스텀',       sub:'직접 설정' }
+};
+
+var currentPreset = 'lotto645';
+
+// ══ 탭 전환 ══
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t,i){
+    var names = ['preset','learning','firebase','code'];
+    t.className = 'tab' + (names[i]===name?' active':'');
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p){
+    p.className = 'tab-panel' + (p.id==='tab-'+name?' active':'');
+  });
+  if(name==='code') generateCode();
+}
+
+// ══ 프리셋 렌더 ══
+function renderPresets() {
+  var g = document.getElementById('presetGrid');
+  g.innerHTML = '';
+  Object.keys(PRESETS).forEach(function(key) {
+    var p = PRESETS[key];
+    var btn = document.createElement('div');
+    btn.className = 'preset-btn' + (key===currentPreset?' active':'');
+    btn.innerHTML = '<div class="preset-name">'+p.label+'</div><div class="preset-sub">'+p.sub+'</div>';
+    btn.onclick = function() { applyPreset(key); };
+    g.appendChild(btn);
+  });
+}
+
+function applyPreset(key) {
+  currentPreset = key;
+  var p = PRESETS[key];
+  Object.keys(p).forEach(function(k) {
+    if(k==='label'||k==='sub') return;
+    CFG[k] = p[k];
+  });
+  updateAllUI();
+  renderPresets();
+  var descs = {
+    lotto645:'한국 로또 6/45 최적화 설정. items=45, pick=6, rounds=50',
+    lotto638:'6/38 복권 최적화. 범위가 좁아 빠른 수렴',
+    powerball:'미국 파워볼 5/69 설정. 범위가 넓어 더 많은 라운드 필요',
+    megamillions:'메가밀리언 5/70 설정',
+    euromillions:'유럽 유로밀리언 5/50 설정',
+    keno:'케노 80중 20 설정. 많은 개수 선택으로 evolveTime 증가',
+    turbo:'빠른 실행 모드. 정밀도↓ 속도↑. 실시간 추천에 적합',
+    custom:'모든 파라미터를 직접 설정하는 커스텀 모드'
+  };
+  document.getElementById('presetDesc').textContent = descs[key] || '';
+}
+
+// ══ 슬라이더 동기화 ══
+function syncOpt(key, val, isFloat) {
+  CFG[key] = isFloat ? parseFloat(val) : parseInt(val);
+  document.getElementById('v_'+key).textContent = isFloat ? parseFloat(val).toFixed(2) : val;
+  updateSummary();
+  if(currentPreset !== 'custom') { currentPreset = 'custom'; renderPresets(); }
+}
+
+function updateAllUI() {
+  var sliders = ['items','pick','rounds','poolSize','topN','evolveTime','recentWindow'];
+  sliders.forEach(function(k) {
+    var el = document.getElementById('s_'+k);
+    var vl = document.getElementById('v_'+k);
+    if(el && CFG[k]!==undefined) { el.value = CFG[k]; vl.textContent = CFG[k]; }
+  });
+  var floats = ['statWeight','bonusWeight','colorZoneWeight','persistenceWeight'];
+  floats.forEach(function(k) {
+    var el = document.getElementById('s_'+k);
+    var vl = document.getElementById('v_'+k);
+    if(el && CFG[k]!==undefined) {
+      el.value = Math.round(CFG[k]*100);
+      vl.textContent = CFG[k].toFixed(2);
+    }
+  });
+  updateSummary();
+}
+
+function updateSummary() {
+  document.getElementById('sumItems').textContent = CFG.items;
+  document.getElementById('sumPick').textContent = CFG.pick;
+  document.getElementById('sumRounds').textContent = CFG.rounds;
+  document.getElementById('sumPool').textContent = (CFG.poolSize||0).toLocaleString();
+  document.getElementById('sumTopN').textContent = CFG.topN;
+  document.getElementById('sumEvolve').textContent = (CFG.evolveTime||80)+'ms';
+}
+
+// ══ 코드 생성 ══
+function generateCode() {
+  var col = document.getElementById('fb_col').value || 'lotto_history';
+  var doc = document.getElementById('fb_doc').value || 'shared_engine_state';
+  var code =
+'// CubeEngine 설정 — ' + new Date().toLocaleDateString('ko-KR') + '\n' +
+'// 프리셋: ' + currentPreset + '\n\n' +
+'const result = await CubeEngine.generate(\n' +
+'  CubeEngine.withPreset(\'' + (currentPreset==='custom'?'lotto645':currentPreset) + '\', {\n' +
+'    items           : ' + CFG.items + ',\n' +
+'    pick            : ' + CFG.pick + ',\n' +
+'    rounds          : ' + CFG.rounds + ',\n' +
+'    poolSize        : ' + CFG.poolSize + ',\n' +
+'    topN            : ' + CFG.topN + ',\n' +
+'    evolveTime      : ' + CFG.evolveTime + ',\n' +
+'    statWeight      : ' + CFG.statWeight.toFixed(2) + ',\n' +
+'    recentWindow    : ' + CFG.recentWindow + ',\n' +
+'    bonusWeight     : ' + CFG.bonusWeight.toFixed(2) + ',\n' +
+'    colorZoneWeight : ' + CFG.colorZoneWeight.toFixed(2) + ',\n' +
+'    persistenceWeight: ' + CFG.persistenceWeight.toFixed(2) + ',\n' +
+(CFG.rangeStart&&CFG.rangeStart>1 ? '    rangeStart      : ' + CFG.rangeStart + ',\n' : '') +
+(CFG.rangeEnd&&CFG.rangeEnd<CFG.items ? '    rangeEnd        : ' + CFG.rangeEnd + ',\n' : '') +
+'    history         : 당첨번호_배열,   // [[n1,n2,...], ...]\n' +
+'    bonusHistory    : 보너스번호_배열, // [b1, b2, ...]\n' +
+'    externalProbMap : prevProbMap,     // Firebase에서 로드한 이전 확률맵\n' +
+'    initialPool     : prevPool,        // Firebase에서 로드한 이전 pool\n' +
+'    onProgress      : function(pct, stats) { console.log(pct + \'%\'); }\n' +
+'  })\n' +
+');\n\n' +
+'// Firebase 저장 경로\n' +
+'// Collection: ' + col + '\n' +
+'// Document  : ' + doc + '\n' +
+'// probMap 키 형식: n1~n45';
+  document.getElementById('generatedCode').textContent = code;
+}
+
+function copyCode() {
+  var code = document.getElementById('generatedCode').textContent;
+  navigator.clipboard.writeText(code).then(function(){
+    var btn = event.target;
+    btn.textContent = '✅ 복사됨!';
+    setTimeout(function(){ btn.textContent = '📋 코드 복사'; }, 2000);
+  });
+}
+
+// ══ 설정 저장/불러오기 ══
+function saveSettings() {
+  try {
+    localStorage.setItem('cubeengine_cfg', JSON.stringify(CFG));
+    localStorage.setItem('cubeengine_preset', currentPreset);
+    localStorage.setItem('cubeengine_fb', JSON.stringify({
+      col: document.getElementById('fb_col').value,
+      doc: document.getElementById('fb_doc').value,
+      btdoc: document.getElementById('fb_btdoc').value,
+      history: document.getElementById('fb_history').value
+    }));
+    rlog('💾 설정 저장 완료 (LocalStorage)', 'log-ts');
+  } catch(e) { rlog('저장 실패: '+e.message, 'log-te'); }
+}
+
+function loadSettings() {
+  try {
+    var cfg = localStorage.getItem('cubeengine_cfg');
+    var preset = localStorage.getItem('cubeengine_preset');
+    var fb = localStorage.getItem('cubeengine_fb');
+    if(cfg) {
+      CFG = JSON.parse(cfg);
+      currentPreset = preset || 'custom';
+      updateAllUI(); renderPresets();
+      rlog('📂 설정 불러오기 완료', 'log-ts');
+    }
+    if(fb) {
+      var f = JSON.parse(fb);
+      document.getElementById('fb_col').value = f.col||'';
+      document.getElementById('fb_doc').value = f.doc||'';
+      document.getElementById('fb_btdoc').value = f.btdoc||'';
+      document.getElementById('fb_history').value = f.history||'';
+    }
+  } catch(e) { rlog('불러오기 실패: '+e.message, 'log-te'); }
+}
+
+function resetSettings() {
+  if(!confirm('모든 설정을 기본값으로 초기화합니까?')) return;
+  applyPreset('lotto645');
+  rlog('↺ 기본값(lotto645)으로 초기화', 'log-tw');
+}
+
+// ══ 로그 ══
+function rlog(msg, cls) {
+  var el = document.getElementById('runLog');
+  var d = document.createElement('div');
+  d.className = cls||'log-ti';
+  d.textContent = '['+new Date().toLocaleTimeString('ko-KR')+'] '+msg;
+  el.insertBefore(d, el.firstChild);
+}
+
+// ══ 테스트 실행 ══
+async function runTest() {
+  if(typeof CubeEngine === 'undefined') {
+    rlog('❌ cube-engine.js 로드 실패 — 같은 폴더에 있는지 확인하세요', 'log-te');
+    return;
+  }
+  document.getElementById('btnTest').disabled = true;
+  document.getElementById('runStatus').className = 'badge badge-warn';
+  document.getElementById('runStatus').textContent = '실행 중...';
+  document.getElementById('runBar').style.width = '0%';
+  document.getElementById('runBest').textContent = '-';
+
+  rlog('▶ 테스트 실행 — 프리셋: '+currentPreset+' | rounds:'+CFG.rounds+' | poolSize:'+CFG.poolSize, 'log-ts');
+
+  try {
+    var opts = Object.assign({}, CFG, {
+      topN: CFG.topN,
+      onProgress: function(pct, stats) {
+        document.getElementById('runBar').style.width = pct+'%';
+        if(stats && stats.bestScore && stats.bestScore > 0) {
+          document.getElementById('runBest').textContent = stats.bestScore.toFixed(2);
+        }
+        if(stats && stats.round && stats.round % 5 === 0) {
+          rlog('Round '+stats.round+'/'+CFG.rounds+' — best:'+(stats.bestScore||0).toFixed(2), 'log-ti');
+        }
+      }
+    });
+    if(!opts.rangeStart || opts.rangeStart <= 1) delete opts.rangeStart;
+    if(!opts.rangeEnd || opts.rangeEnd >= opts.items) delete opts.rangeEnd;
+
+    var result = await CubeEngine.generate(opts);
+
+    document.getElementById('runStatus').className = 'badge badge-ok';
+    document.getElementById('runStatus').textContent = '완료';
+    document.getElementById('runBar').style.width = '100%';
+    document.getElementById('runBest').textContent = result.scores[0].toFixed(2);
+
+    rlog('✅ 완료 — best:'+result.scores[0].toFixed(2)+' | elapsed:'+result.meta.elapsed+'ms', 'log-ts');
+    result.results.slice(0,3).forEach(function(combo, i){
+      rlog('#'+(i+1)+': ['+combo.join(', ')+'] 점수:'+result.scores[i].toFixed(2), 'log-ti');
+    });
+  } catch(e) {
+    document.getElementById('runStatus').className = 'badge badge-err';
+    document.getElementById('runStatus').textContent = '오류';
+    rlog('❌ 오류: '+e.message, 'log-te');
+  } finally {
+    document.getElementById('btnTest').disabled = false;
+  }
+}
+
+// ══ 초기화 ══
+(function init() {
+  renderPresets();
+  updateAllUI();
+  loadSettings();
+  generateCode();
+
+  // 코드 자동 갱신
+  document.querySelectorAll('input[type=range], input[type=number], .fb-input').forEach(function(el){
+    el.addEventListener('change', function(){ if(document.getElementById('tab-code').classList.contains('active')) generateCode(); });
+  });
+
+  // CubeEngine 로드 확인
+  if(typeof CubeEngine !== 'undefined') {
+    rlog('✅ CubeEngine v'+CubeEngine.version+' 로드 완료', 'log-ts');
+  } else {
+    rlog('⚠️ CubeEngine 미로드 — cube-engine.js를 같은 폴더에 놓아주세요', 'log-tw');
+  }
+})();
+</script>
+</body>
+</html>

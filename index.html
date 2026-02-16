@@ -119,6 +119,7 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 <div class="hd">
   <div>
     <span class="hd-title">🧊 CubeEngine 학습 모니터</span>
+    <a href="setCubeEngine.html" style="background:#21262d;color:#58a6ff;border:1px solid #30363d;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:bold;text-decoration:none;">⚙️ 엔진 설정</a>
     <span class="badge" id="verBadge">v2.1.0</span>
   </div>
   <div class="hd-meta">
@@ -174,12 +175,13 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 <div class="btn-row">
   <button class="btn btn-run"   id="btnRun">▶ 학습 실행 (로또 웹과 공유)</button>
   <button class="btn" id="btnBacktest" style="background:#1f4068;color:#58a6ff;border:1px solid #58a6ff;">🔬 백테스팅 실행</button>
+  <button class="btn" id="btnApplyBt" style="background:#1a3a1a;color:#00ff88;border:1px solid #00ff88;display:none;">✅ 로또 웹에 적용</button>
 </div>
 
 <!-- 백테스팅 패널 -->
 <div id="btPanel" style="display:none;margin-bottom:12px;">
   <div class="card" style="border-color:#1f4068;">
-    <div class="card-ttl"><div class="dot db"></div>백테스팅 — 실제 당첨 검증 학습 (900회 초기학습 → 901~현재 피드백)</div>
+    <div class="card-ttl"><div class="dot db"></div>백테스팅 — 실제 당첨 검증 학습 (900회 초기학습 → 901~현재 피드백) | 저장: backtest_engine_state</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
       <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:20px;font-weight:bold;color:#58a6ff;" id="btCurDraw">-</div>
@@ -345,8 +347,10 @@ var db = firebase.firestore();
 
 // ★ 로또 웹과 동일한 경로
 var SHARED_COL = 'lotto_history';
-var SHARED_DOC = 'shared_engine_state';
+var SHARED_DOC  = 'shared_engine_state';
+var BACKTEST_DOC = 'backtest_engine_state';  // 백테스팅 전용 경로
 var DOC = db.collection(SHARED_COL).doc(SHARED_DOC);
+var BT_DOC = db.collection(SHARED_COL).doc(BACKTEST_DOC);
 
 // ══ 상태 ══
 var S = { iter:0, prevMap:null, curMap:null, curve:[], prevBest:0, running:false, source:'-', historyNums:[] };
@@ -628,6 +632,90 @@ async function saveSharedEngineState(result, source){
 
     return actualIteration;
   } catch(e){ tlog('저장 실패: '+e.message,'te'); return false; }
+}
+
+// ══ 백테스팅 전용 저장 (backtest_engine_state) ══
+async function saveBacktestState(probMap, source) {
+  try {
+    var engineVer = (typeof CubeEngine!=='undefined') ? CubeEngine.version : 'unknown';
+    var actualIteration = 0;
+    var newProbMapStr = {};
+    for(var n=1;n<=45;n++) newProbMapStr['n'+n] = probMap[n] || 0;
+
+    await db.runTransaction(function(tx){
+      return tx.get(BT_DOC).then(function(snap){
+        var existing = snap.exists ? snap.data() : null;
+        var baseIter = existing ? (existing.iteration||0) : 0;
+        actualIteration = baseIter + 1;
+
+        var mergedProbMap = {};
+        if(existing && existing.probMap && baseIter > 0){
+          var w_old = Math.min(baseIter, 30);
+          var w_new = 1;
+          var w_total = w_old + w_new;
+          for(var n=1;n<=45;n++){
+            var key = 'n'+n;
+            var oldVal = existing.probMap[key]!=null ? parseFloat(existing.probMap[key]) : (newProbMapStr[key]||0);
+            var newVal = newProbMapStr[key]!=null ? parseFloat(newProbMapStr[key]) : oldVal;
+            mergedProbMap[key] = (oldVal*w_old + newVal*w_new) / w_total;
+          }
+        } else {
+          mergedProbMap = newProbMapStr;
+        }
+
+        tx.set(BT_DOC, {
+          probMap      : mergedProbMap,
+          iteration    : actualIteration,
+          engineVersion: engineVer,
+          savedAt      : firebase.firestore.FieldValue.serverTimestamp(),
+          source       : source || 'backtest'
+        });
+      });
+    });
+    return actualIteration;
+  } catch(e){ tlog('백테스팅 저장 실패: '+e.message,'te'); return false; }
+}
+
+// ══ 백테스팅 probMap → shared_engine_state 병합 적용 ══
+async function applyBacktestToLive() {
+  if(!confirm('백테스팅 학습을 로또 웹(shared_engine_state)에 적용합니까?\n\n기존 로또 웹 학습과 50:50으로 병합됩니다.')) return;
+  try {
+    $('btnApplyBt').disabled = true;
+    $('btnApplyBt').textContent = '⏳ 적용 중...';
+
+    // 백테스팅 probMap 로드
+    var btSnap = await BT_DOC.get();
+    if(!btSnap.exists){ alert('백테스팅 결과가 없습니다. 먼저 백테스팅을 실행하세요.'); return; }
+    var btProbMap = btSnap.data().probMap;
+
+    // shared_engine_state에 병합
+    await db.runTransaction(function(tx){
+      return tx.get(DOC).then(function(snap){
+        var existing = snap.exists ? snap.data() : null;
+        var merged = {};
+        for(var n=1;n<=45;n++){
+          var key = 'n'+n;
+          var liveVal = existing&&existing.probMap&&existing.probMap[key]!=null ? parseFloat(existing.probMap[key]) : 0.1;
+          var btVal   = btProbMap[key]!=null ? parseFloat(btProbMap[key]) : 0.1;
+          merged[key] = (liveVal + btVal) / 2;  // 50:50 병합
+        }
+        tx.set(DOC, Object.assign({}, existing||{}, {
+          probMap : merged,
+          iteration: ((existing&&existing.iteration)||0) + 1,
+          savedAt : firebase.firestore.FieldValue.serverTimestamp(),
+          source  : 'backtest_applied'
+        }), {merge:true});
+      });
+    });
+
+    tlog('✅ 백테스팅 학습 → 로또 웹 적용 완료 (50:50 병합)','ts');
+    $('btnApplyBt').textContent = '✅ 적용 완료!';
+    setTimeout(function(){ $('btnApplyBt').textContent = '✅ 로또 웹에 적용'; $('btnApplyBt').disabled=false; }, 3000);
+  } catch(e){
+    tlog('적용 실패: '+e.message,'te');
+    $('btnApplyBt').disabled = false;
+    $('btnApplyBt').textContent = '✅ 로또 웹에 적용';
+  }
 }
 
 // ══ 상태 표시 공통 함수 ══
@@ -1026,8 +1114,9 @@ async function runBacktest() {
       results  : initResult.results,
       scores   : initResult.scores
     };
-    var savedIter = await saveSharedEngineState(fakeResult, 'backtest');
-    tlog('✅ 백테스팅 학습 저장 완료 — iteration:'+savedIter+' | 로또 웹 즉시 반영','ts');
+    var savedIter = await saveBacktestState(currentProbMap, 'backtest');
+    tlog('✅ 백테스팅 저장 완료 — iteration:'+savedIter+' (backtest_engine_state | 로또 웹 미적용)','ts');
+    $('btnApplyBt').style.display = 'block';
 
     BT_REPEAT_COUNT++;
     $('btRepeatCount').textContent = BT_REPEAT_COUNT;
@@ -1060,6 +1149,7 @@ async function runBacktest() {
 }
 
 $('btnBacktest').onclick = runBacktest;
+$('btnApplyBt').onclick = applyBacktestToLive;
 
 
 

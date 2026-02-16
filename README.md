@@ -358,35 +358,6 @@ index.html       ← 학습 상태 모니터링 대시보드 (Firebase 연동)
 |       |      | **— 오래된 패턴(수년 전) 영향력 배제, 최근 트렌드 반영** |
 |       |      | **② zoneFreq, zoneGap 계산에 적용** |
 |       |      | **③ 효과: 더욱 균등한 확률 분포, 시대별 트렌드 변화 적응** |
-| **2.2.6** | **2026-02-16** | **라운드별 probMap 동적 갱신 제거 (번호 쏠림 버그 수정)** |
-|       |      | **① 원인: 매 라운드 상위 조합 번호에 × 1.05 적용 후 × 6.75 정규화 반복** |
-|       |      | **— 50라운드 누적 시 특정 번호 0.95 클램프, 나머지 0.005 이하로 수렴** |
-|       |      | **— 3·6·12·16번 등 초기 우세 번호가 피드백 루프로 고착** |
-|       |      | **② 수정: 동적 갱신 블록 완전 제거** |
-|       |      | **— probMap은 ML + StatCache + 보너스 학습으로만 구성** |
-|       |      | **— 라운드 진행 중 probMap 변경 없음 → 다양한 번호 조합 탐색 가능** |
-
----
-
-## index.html 백테스팅 업데이트 히스토리
-
-| 버전 | 날짜 | 주요 내용 |
-|------|------|----------|
-| **v2.2.6** | **2026-02-16** | **🔬 백테스팅 엔진 추가 (대시보드 내 실행)** |
-|       |      | **① 백테스팅 흐름** |
-|       |      | **— 1~900회차: CubeEngine turbo 초기 학습** |
-|       |      | **— 901~현재: 예측 → 실제 당첨 비교 → probMap 피드백 → 반복** |
-|       |      | **② 피드백 보정 로직** |
-|       |      | **— 예측O 실제O(적중): probMap × 1.08 강화** |
-|       |      | **— 예측O 실제X(오예측): probMap × 0.97 약화** |
-|       |      | **— 예측X 실제O(놓침): probMap × 1.04 약한 강화** |
-|       |      | **— 보너스 번호: × 1.03 추가 강화** |
-|       |      | **③ 완료 후 Firebase shared_engine_state 저장** |
-|       |      | **— 로또 웹(recommend.js, semiauto.js) 즉시 반영** |
-|       |      | **— source: 'backtest' 로 저장** |
-|       |      | **④ UI: 6개/5개/4개/3개/2개이하 누적 통계, 평균 적중수, 실시간 로그** |
-|       |      | **⑤ 완료 후 히트맵·확률바 자동 갱신** |
-
 
 ---
 
@@ -402,3 +373,26 @@ index.html       ← 학습 상태 모니터링 대시보드 (Firebase 연동)
 |       |      | **④ Pool Size 슬라이더 자동 비활성화** |
 |       |      | **— 학습 시작 시 disabled, 완료/오류 시 재활성화** |
 |       |      | **— disabled 스타일: opacity 50% + cursor:not-allowed** |
+
+## ver 2.2.7
+2026-02-16
+
+### 백테스팅 경로 분리 + setCubeEngine.html 신설 (index.html, setCubeEngine.html)
+
+**백테스팅 경로 분리 (index.html)**
+- 기존: 백테스팅 결과가 `shared_engine_state`에 저장 → 로또 웹 학습 오염
+- 변경: 백테스팅 → `backtest_engine_state` 전용 문서에 저장
+- 새 함수: `saveBacktestState(probMap)` — backtest_engine_state에 가중 평균 병합
+- 새 버튼: `✅ 로또 웹에 적용` — 백테스팅 완료 후에만 표시
+  - `applyBacktestToLive()`: backtest + shared 50:50 병합 → shared_engine_state 저장
+  - confirm 대화상자로 의도치 않은 적용 방지
+- 반복 백테스팅 시 로또 웹 학습 영향 없음
+
+**setCubeEngine.html 신설**
+- 대시보드 헤더 `⚙️ 엔진 설정` 버튼 → setCubeEngine.html 이동
+- 4탭 구성:
+  1. 🎛 프리셋: lotto645/lotto638/파워볼/메가밀리언/유로밀리언/케노/터보/커스텀
+  2. 🧠 학습 파라미터: items/pick/rounds/poolSize/topN/evolveTime + 가중치 5종 슬라이더
+  3. 🔥 Firebase: collection/document 경로 직접 입력, 학습 공유 토글
+  4. 📋 코드 생성: 현재 설정 → 복사 가능한 JS 코드 자동 생성
+- 하단 공통: 테스트 실행 (Firebase 없이 로컬), 설정 저장/불러오기 (LocalStorage), 초기화
