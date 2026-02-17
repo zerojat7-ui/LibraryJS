@@ -621,7 +621,7 @@ setCubeEngine.html 신설
 
 ## 라이센스
 
-MIT License
+zerojat7-ui License
 
 ## 문의
 
