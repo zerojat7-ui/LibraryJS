@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════╗
- * ║              CubeEngine  v2.5.0  (Universal)             ║
+ * ║              CubeEngine  v2.5.1  (Universal)             ║
  * ║   Hybrid Cube Evolution × ML Probability Engine          ║
- * ║   + StatCache · WeightedProb · Stat50Trend v2.5.0        ║
+ * ║   + StatCache · WeightedProb · Stat50Trend v2.5.1        ║
  * ╚══════════════════════════════════════════════════════════╝
  *
  * v2.1.0: StatCache / WeightedProb / historySet O(1) / statWeight
@@ -24,6 +24,10 @@
  *         ④ 끝수 트렌드  → 끝자리 강세 번호 probMap 조정
  *         ⑤ 번호합 트렌드 → scoreCombo 합계 범위 보너스
  *         ⑥ 고저 트렌드  → 고번호(23~45)/저번호(1~22) probMap 조정
+ * v2.5.1: 트렌드 윈도우 축소 (최근 변화 민감도 증가)
+ *         - 5종 패턴 트렌드: 100회(50+50) → 60회(30+30)
+ *         - 5종 지표 트렌드: 100회(50+50) → 20회(10+10)
+ *         - 색상 구역 트렌드: 40회(20+20) 유지
  */
 
 'use strict';
@@ -216,8 +220,8 @@ function buildStatCache(history, cfg) {
             });
         }
     }
-    // ── v2.4.2: 5종 트렌드 (최근50회/이전50회 고정 분리, ratio 방식)
-    var trendWindow  = Math.min(100, history ? history.length : 0);
+    // ── v2.4.2 → v2.5.1: 5종 트렌드 (최근30회/이전30회로 축소, ratio 방식)
+    var trendWindow  = Math.min(60, history ? history.length : 0);
     var trendHistory = history ? history.slice(-trendWindow) : [];
     var trends = {
         oddRatio   : 1.0,
@@ -233,10 +237,10 @@ function buildStatCache(history, cfg) {
     for(var td=0; td<=9; td++) trends.tailTrend[td] = 1.0;
 
     if(trendHistory.length >= 10) {
-        // 최근50 / 이전50 고정 분리 (데이터 부족시 절반씩)
-        var tHalf   = Math.min(50, Math.floor(trendHistory.length / 2));
-        var tSecond = trendHistory.slice(-tHalf);             // 최근 50회
-        var tFirst  = trendHistory.slice(-(tHalf * 2), -tHalf); // 이전 50회
+        // 최근30 / 이전30 고정 분리 (데이터 부족시 절반씩)
+        var tHalf   = Math.min(30, Math.floor(trendHistory.length / 2));
+        var tSecond = trendHistory.slice(-tHalf);             // 최근 30회
+        var tFirst  = trendHistory.slice(-(tHalf * 2), -tHalf); // 이전 30회
 
         function trendRatio(firstVal, secondVal) {
             if(firstVal === 0) return secondVal > 0 ? 1.5 : 1.0;
@@ -297,69 +301,69 @@ function buildStatCache(history, cfg) {
         trends.highRatio = trendRatio(highFirst/tFirst.length, highSecond/tSecond.length);
     }
 
-    // ── v2.5.0: 5종 지표 최신50회 vs 이전50회 트렌드 ──
+    // ── v2.5.0 → v2.5.1: 5종 지표 최신10회 vs 이전10회 트렌드 ──
     // 색상(colorZone)은 이미 별도 처리하므로 제외
     // 대상: freq / recentFreq / gap / reHit / bonus
     var stat50Trend = {};
     for(var si=1; si<=cfg.items; si++) stat50Trend[si] = 0.5; // 기본: 중립
 
-    if(history && history.length >= 50) {
+    if(history && history.length >= 20) {
         var h = history;
         var hLen = h.length;
-        var NEW50 = h.slice(hLen - 50);           // 최신 50회
-        var OLD50 = h.slice(Math.max(0, hLen - 100), hLen - 50); // 이전 50회
+        var NEW10 = h.slice(hLen - 10);           // 최신 10회
+        var OLD10 = h.slice(Math.max(0, hLen - 20), hLen - 10); // 이전 10회
 
-        // ① freq 트렌드: 최신50 출현수 vs 이전50 출현수
+        // ① freq 트렌드: 최신10 출현수 vs 이전10 출현수
         var freqNew = {}, freqOld = {};
         for(var si=1; si<=cfg.items; si++) { freqNew[si]=0; freqOld[si]=0; }
-        NEW50.forEach(function(d){ d.forEach(function(n){ if(freqNew[n]!==undefined) freqNew[n]++; }); });
-        if(OLD50.length>0) OLD50.forEach(function(d){ d.forEach(function(n){ if(freqOld[n]!==undefined) freqOld[n]++; }); });
+        NEW10.forEach(function(d){ d.forEach(function(n){ if(freqNew[n]!==undefined) freqNew[n]++; }); });
+        if(OLD10.length>0) OLD10.forEach(function(d){ d.forEach(function(n){ if(freqOld[n]!==undefined) freqOld[n]++; }); });
 
-        // ② gap 트렌드: 이전50에서의 gap vs 최신50에서의 gap (작을수록 최근 출현 = 양수)
-        // gap50 = 최신50 내에서의 마지막 출현 간격 (없으면 50)
+        // ② gap 트렌드: 이전10에서의 gap vs 최신10에서의 gap (작을수록 최근 출현 = 양수)
+        // gap10 = 최신10 내에서의 마지막 출현 간격 (없으면 10)
         var gapNew = {}, gapOld = {};
-        for(var si=1; si<=cfg.items; si++) { gapNew[si]=50; gapOld[si]=(OLD50.length||50); }
+        for(var si=1; si<=cfg.items; si++) { gapNew[si]=10; gapOld[si]=(OLD10.length||10); }
         for(var si=1; si<=cfg.items; si++) {
-            for(var ji=NEW50.length-1; ji>=0; ji--) {
-                if(NEW50[ji].indexOf(si)>=0){ gapNew[si]=NEW50.length-ji-1; break; }
+            for(var ji=NEW10.length-1; ji>=0; ji--) {
+                if(NEW10[ji].indexOf(si)>=0){ gapNew[si]=NEW10.length-ji-1; break; }
             }
-            if(OLD50.length>0) {
-                for(var ji=OLD50.length-1; ji>=0; ji--) {
-                    if(OLD50[ji].indexOf(si)>=0){ gapOld[si]=OLD50.length-ji-1; break; }
+            if(OLD10.length>0) {
+                for(var ji=OLD10.length-1; ji>=0; ji--) {
+                    if(OLD10[ji].indexOf(si)>=0){ gapOld[si]=OLD10.length-ji-1; break; }
                 }
             }
         }
 
-        // ③ reHit 트렌드: 최신50/이전50 내 연속 재출현 횟수
+        // ③ reHit 트렌드: 최신10/이전10 내 연속 재출현 횟수
         var reHitNew = {}, reHitOld = {};
         for(var si=1; si<=cfg.items; si++) { reHitNew[si]=0; reHitOld[si]=0; }
-        for(var ki=1; ki<NEW50.length; ki++) {
-            var prev50 = NEW50[ki-1], curr50 = NEW50[ki];
-            prev50.forEach(function(n){ if(curr50.indexOf(n)>=0&&reHitNew[n]!==undefined) reHitNew[n]++; });
+        for(var ki=1; ki<NEW10.length; ki++) {
+            var prev10 = NEW10[ki-1], curr10 = NEW10[ki];
+            prev10.forEach(function(n){ if(curr10.indexOf(n)>=0&&reHitNew[n]!==undefined) reHitNew[n]++; });
         }
-        for(var ki=1; ki<OLD50.length; ki++) {
-            var prev50o = OLD50[ki-1], curr50o = OLD50[ki];
-            prev50o.forEach(function(n){ if(curr50o.indexOf(n)>=0&&reHitOld[n]!==undefined) reHitOld[n]++; });
+        for(var ki=1; ki<OLD10.length; ki++) {
+            var prev10o = OLD10[ki-1], curr10o = OLD10[ki];
+            prev10o.forEach(function(n){ if(curr10o.indexOf(n)>=0&&reHitOld[n]!==undefined) reHitOld[n]++; });
         }
 
-        // ④ bonus 트렌드: bonusHistory 있으면 최신50/이전50 보너스 빈도
+        // ④ bonus 트렌드: bonusHistory 있으면 최신10/이전10 보너스 빈도
         var bonusNew = {}, bonusOld = {};
         for(var si=1; si<=cfg.items; si++) { bonusNew[si]=0; bonusOld[si]=0; }
-        if(cfg.bonusHistory && cfg.bonusHistory.length >= 50) {
+        if(cfg.bonusHistory && cfg.bonusHistory.length >= 20) {
             var bh = cfg.bonusHistory;
             var bLen = bh.length;
-            bh.slice(bLen-50).forEach(function(b){ if(bonusNew[b]!==undefined) bonusNew[b]++; });
-            bh.slice(Math.max(0,bLen-100), bLen-50).forEach(function(b){ if(bonusOld[b]!==undefined) bonusOld[b]++; });
+            bh.slice(bLen-10).forEach(function(b){ if(bonusNew[b]!==undefined) bonusNew[b]++; });
+            bh.slice(Math.max(0,bLen-20), bLen-10).forEach(function(b){ if(bonusOld[b]!==undefined) bonusOld[b]++; });
         }
 
         // ── 5종 델타 합산 → stat50Trend 0~1 정규화 ──
         for(var si=1; si<=cfg.items; si++) {
             // 각 지표 delta (양수=강세, 음수=약세)
-            var dFreq    = (freqNew[si] - freqOld[si]) / 50;           // -1~+1
+            var dFreq    = (freqNew[si] - freqOld[si]) / 10;           // -1~+1 (10회 기준)
             var dRecent  = dFreq;                                        // freq와 유사, 단순화
-            var dGap     = (gapOld[si] - gapNew[si]) / 50;             // gap 감소=강세=양수
-            var dReHit   = (reHitNew[si] - reHitOld[si]) / 10;         // -1~+1
-            var dBonus   = (bonusNew[si] - bonusOld[si]) / 50;         // -1~+1
+            var dGap     = (gapOld[si] - gapNew[si]) / 10;             // gap 감소=강세=양수
+            var dReHit   = (reHitNew[si] - reHitOld[si]) / 5;          // -1~+1 (10회 중 최대 5회)
+            var dBonus   = (bonusNew[si] - bonusOld[si]) / 10;         // -1~+1 (10회 기준)
 
             // 가중 합산: freq/recent 각 30%, gap 20%, reHit 10%, bonus 10%
             var delta = dFreq*0.30 + dRecent*0.30 + dGap*0.20 + dReHit*0.10 + dBonus*0.10;
@@ -872,7 +876,7 @@ async function generate(options) {
             elapsed      : Math.round(performance.now() - startTime),
             historySize  : cfg.history ? cfg.history.length : 0,
             generatedAt  : new Date().toISOString(),
-            version  : '2.5.0'
+            version  : '2.5.1'
         }
     };
 
@@ -888,7 +892,7 @@ var CubeEngine = {
     buildStatCache  : buildStatCache,
     buildWeightedProb: buildWeightedProb,
     defaults        : DEFAULTS,
-    version  : '2.5.0',
+    version  : '2.5.1',
 
     presets: {
         lotto645    : { items: 45, pick: 6,  threshold: 5,  evolveTime: 80,  rounds: 50, poolSize: 2500 },
