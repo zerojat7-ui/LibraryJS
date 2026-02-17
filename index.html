@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CubeEngine v2.5.1 — 학습 모니터</title>
+<title>CubeEngine v2.5.2 — 학습 모니터</title>
 <style>
 :root {
   --bg:#0d1117; --card:#161b22; --border:#30363d;
@@ -181,7 +181,7 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
 <!-- 백테스팅 패널 -->
 <div id="btPanel" style="display:none;margin-bottom:12px;">
   <div class="card" style="border-color:#1f4068;">
-    <div class="card-ttl"><div class="dot db"></div>백테스팅 — 실제 당첨 검증 학습 (900회 초기학습 → 901~현재 피드백) | 저장: backtest_engine_state</div>
+    <div class="card-ttl"><div class="dot db"></div>백테스팅 — 실제 당첨 검증 학습 (매 회차마다 자동 저장 → 언제든지 중단 후 재개 가능 | 완료 후 "✅ 로또 웹에 적용" 버튼으로 수동 반영)</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
       <div style="background:#0d1117;border-radius:8px;padding:10px;text-align:center;">
         <div style="font-size:20px;font-weight:bold;color:#58a6ff;" id="btCurDraw">-</div>
@@ -247,16 +247,13 @@ canvas{width:100%;border-radius:8px;display:block;background:#010409;border:1px 
         <strong id="btTotalDraws" style="color:#00ff88;">0</strong>회차
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button id="btnBtContinue" style="display:none;background:#1f4068;color:#58a6ff;border:1px solid #58a6ff;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;">▶ 계속 (다음 50회)</button>
+        <button id="btnBtContinue" style="display:none;background:#1f4068;color:#58a6ff;border:1px solid #58a6ff;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;">▶ 중단된 지점부터 계속</button>
         <button id="btnBtRestart" style="display:none;background:#2d1a00;color:#f5a623;border:1px solid #f5a623;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;">↺ 처음부터 재시작</button>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;">
           <input type="checkbox" id="btRepeat" style="width:14px;height:14px;">
-          <span style="color:#8b949e;">데이터 소진 시 자동 반복</span>
+          <span style="color:#8b949e;">전체 완료 시 자동 반복</span>
         </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;">
-          <input type="checkbox" id="btAutoNext" checked style="width:14px;height:14px;">
-          <span style="color:#8b949e;">50회마다 자동 계속</span>
-        </label>
+        <span style="font-size:10px;color:#69c8f0;margin-left:10px;">💾 매 회차마다 자동 저장 → 언제든지 브라우저 종료 후 재진입 시 자동 이어서 진행</span>
       </div>
     </div>
     <!-- 최근 결과 로그 -->
@@ -381,8 +378,10 @@ var db = firebase.firestore();
 var SHARED_COL = 'lotto_history';
 var SHARED_DOC  = 'shared_engine_state';
 var BACKTEST_DOC = 'backtest_engine_state';  // 백테스팅 전용 경로
+var BACKTEST_PROGRESS_DOC = 'backtest_progress';  // 백테스팅 진행도 저장 (v2.5.2)
 var DOC = db.collection(SHARED_COL).doc(SHARED_DOC);
 var BT_DOC = db.collection(SHARED_COL).doc(BACKTEST_DOC);
+var BT_PROGRESS_DOC = db.collection(SHARED_COL).doc(BACKTEST_PROGRESS_DOC);
 
 // ══ 상태 ══
 var S = { iter:0, prevMap:null, curMap:null, curve:[], prevBest:0, running:false, source:'-', historyNums:[] };
@@ -710,17 +709,24 @@ async function saveBacktestState(probMap, source) {
 
 // ══ 백테스팅 probMap → shared_engine_state 병합 적용 ══
 async function applyBacktestToLive() {
-  if(!confirm('백테스팅 학습을 로또 웹(shared_engine_state)에 적용합니까?\n\n기존 로또 웹 학습과 50:50으로 병합됩니다.')) return;
+  if(!confirm('현재 백테스팅 학습 결과를 로또 웹(shared_engine_state)에 적용합니까?\n\n기존 로또 웹 학습과 50:50으로 병합됩니다.')) return;
   try {
     $('btnApplyBt').disabled = true;
     $('btnApplyBt').textContent = '⏳ 적용 중...';
 
-    // 백테스팅 probMap 로드
-    var btSnap = await BT_DOC.get();
-    if(!btSnap.exists){ alert('백테스팅 결과가 없습니다. 먼저 백테스팅을 실행하세요.'); return; }
-    var btProbMap = btSnap.data().probMap;
+    // ★ v2.5.2: 백테스팅 진행도에서 probMap 로드
+    var progressSnap = await BT_PROGRESS_DOC.get();
+    if(!progressSnap.exists || !progressSnap.data().currentProbMap){ 
+      alert('백테스팅 진행도가 없습니다. 먼저 백테스팅을 실행하세요.'); 
+      $('btnApplyBt').disabled = false;
+      $('btnApplyBt').textContent = '✅ 로또 웹에 적용';
+      return; 
+    }
+    
+    // Firebase 형식(n1, n2, ...)으로 저장된 probMap
+    var btProbMapSerialized = progressSnap.data().currentProbMap;
 
-    // shared_engine_state에 병합
+    // shared_engine_state에 병합 및 저장
     await db.runTransaction(function(tx){
       return tx.get(DOC).then(function(snap){
         var existing = snap.exists ? snap.data() : null;
@@ -728,7 +734,7 @@ async function applyBacktestToLive() {
         for(var n=1;n<=45;n++){
           var key = 'n'+n;
           var liveVal = existing&&existing.probMap&&existing.probMap[key]!=null ? parseFloat(existing.probMap[key]) : 0.1;
-          var btVal   = btProbMap[key]!=null ? parseFloat(btProbMap[key]) : 0.1;
+          var btVal   = btProbMapSerialized[key]!=null ? parseFloat(btProbMapSerialized[key]) : 0.1;
           merged[key] = (liveVal + btVal) / 2;  // 50:50 병합
         }
         tx.set(DOC, Object.assign({}, existing||{}, {
@@ -958,16 +964,119 @@ async function clearBtCheckpoint() {
   } catch(e) {}
 }
 
-// ══ 페이지 로드 시 체크포인트 복원 시도 ══
+// ══ Firebase 백테스팅 진행도 저장/로드 (v2.5.2) ══
+async function saveBtProgressToFirebase() {
+  try {
+    var progressData = {
+      currentProbMap   : BT_STATE.currentProbMap ? serializeProbMap(BT_STATE.currentProbMap) : null,
+      cumulativeHistory: BT_STATE.cumulativeHistory,
+      cumulativeBonus  : BT_STATE.cumulativeBonus,
+      nextIdx          : BT_STATE.nextIdx,
+      TRAIN_UNTIL      : BT_STATE.TRAIN_UNTIL,
+      totalProcessed   : BT_STATE.totalProcessed,
+      repeatRound      : BT_STATE.repeatRound,
+      btStats          : BT.stats,
+      btAutoNext       : $('btAutoNext').checked,
+      btRepeat         : $('btRepeat').checked,
+      savedAt          : firebase.firestore.FieldValue.serverTimestamp(),
+      version          : '2.5.2'
+    };
+
+    await BT_PROGRESS_DOC.set(progressData);
+    tlog('☁️ Firebase 진행도 저장 완료 (nextIdx:'+BT_STATE.nextIdx+')','ti');
+    return true;
+  } catch(e) {
+    tlog('⚠️ Firebase 진행도 저장 실패: '+e.message,'tw');
+    return false;
+  }
+}
+
+async function loadBtProgressFromFirebase() {
+  try {
+    var snap = await BT_PROGRESS_DOC.get();
+    if(!snap.exists) {
+      tlog('Firebase 진행도 없음','ti');
+      return null;
+    }
+    var data = snap.data();
+    
+    // probMap 역직렬화
+    if(data.currentProbMap) {
+      data.currentProbMap = deserializeProbMap(data.currentProbMap);
+    }
+    
+    tlog('☁️ Firebase 진행도 로드: nextIdx='+data.nextIdx+' | 처리='+data.totalProcessed+'회','ts');
+    return data;
+  } catch(e) {
+    tlog('⚠️ Firebase 진행도 로드 실패: '+e.message,'tw');
+    return null;
+  }
+}
+
+async function clearBtProgressFromFirebase() {
+  try {
+    await BT_PROGRESS_DOC.delete();
+    tlog('🗑 Firebase 진행도 삭제됨','ti');
+  } catch(e) {
+    tlog('⚠️ Firebase 진행도 삭제 실패: '+e.message,'tw');
+  }
+}
+
+// probMap 직렬화/역직렬화 헬퍼
+function serializeProbMap(probMap) {
+  var serialized = {};
+  for(var n=1; n<=45; n++) {
+    serialized['n'+n] = probMap[n] || 0;
+  }
+  return serialized;
+}
+
+function deserializeProbMap(serialized) {
+  var probMap = {};
+  for(var n=1; n<=45; n++) {
+    probMap[n] = serialized['n'+n] || 0;
+  }
+  return probMap;
+}
+
+// ══ 페이지 로드 시 체크포인트 복원 시도 (Firebase 우선) ══
 async function tryRestoreBtCheckpoint() {
-  var saved = await loadBtCheckpoint();
+  // ① Firebase에서 먼저 시도
+  var firebaseSaved = await loadBtProgressFromFirebase();
+  var localSaved = await loadBtCheckpoint();
+  
+  var saved = null;
+  var source = '';
+  
+  // Firebase와 로컬 모두 있으면 더 최신 것 선택
+  if(firebaseSaved && localSaved) {
+    var fbTime = firebaseSaved.savedAt ? new Date(firebaseSaved.savedAt.toDate()).getTime() : 0;
+    var localTime = localSaved.savedAt ? new Date(localSaved.savedAt).getTime() : 0;
+    
+    if(fbTime >= localTime) {
+      saved = firebaseSaved;
+      source = 'Firebase';
+    } else {
+      saved = localSaved;
+      source = '로컬 스토리지';
+    }
+  } else if(firebaseSaved) {
+    saved = firebaseSaved;
+    source = 'Firebase';
+  } else if(localSaved) {
+    saved = localSaved;
+    source = '로컬 스토리지';
+  }
+  
   if(!saved || saved.nextIdx === undefined) return;
 
   // 복원 가능한 상태인지 확인 (nextIdx > 0 이어야 의미 있음)
   if(saved.nextIdx <= 0 && saved.totalProcessed <= 0) return;
 
-  var savedAt = saved.savedAt ? new Date(saved.savedAt).toLocaleString('ko-KR') : '알 수 없음';
-  tlog('📂 저장된 체크포인트 발견! nextIdx:'+saved.nextIdx+' | 처리:'+saved.totalProcessed+'회 | '+savedAt,'tw');
+  var savedAt = saved.savedAt 
+    ? (saved.savedAt.toDate ? saved.savedAt.toDate().toLocaleString('ko-KR') : new Date(saved.savedAt).toLocaleString('ko-KR'))
+    : '알 수 없음';
+  tlog('📂 저장된 체크포인트 발견! ('+source+') nextIdx:'+saved.nextIdx+' | 처리:'+saved.totalProcessed+'회 | '+savedAt,'tw');
 
   // BT_STATE에 메타 정보만 미리 복원 (allDraws는 실행 시 로드)
   BT_STATE.currentProbMap    = saved.currentProbMap || null;
@@ -988,13 +1097,13 @@ async function tryRestoreBtCheckpoint() {
 
   // 복원 안내 배너 표시
   $('btPanel').style.display = 'block';
-  $('btStatus').textContent  = '📂 이전 체크포인트 복원됨 — '+savedAt+' | '+BT_STATE.nextIdx+'회차까지 완료';
-  $('btCheckpoint').textContent = BT_STATE.TRAIN_UNTIL + BT_STATE.nextIdx + '회차까지 (이전 세션)';
+  $('btStatus').textContent  = '📂 이전 체크포인트 복원됨 ('+source+') — '+savedAt+' | '+BT_STATE.nextIdx+'회차까지 완료';
+  $('btCheckpoint').textContent = BT_STATE.TRAIN_UNTIL + BT_STATE.nextIdx + '회차까지 ('+source+')';
   $('btnBtContinue').style.display = 'inline-block';
   $('btnBtRestart').style.display  = 'inline-block';
   btUpdateStats();
 
-  tlog('✅ 체크포인트 복원 완료 — [▶ 계속] 버튼으로 이어서 진행하세요','ts');
+  tlog('✅ 체크포인트 복원 완료 ('+source+') — [▶ 계속] 버튼으로 이어서 진행하세요','ts');
 }
 
 function btShowBalls(predicted, actual) {
@@ -1220,14 +1329,14 @@ async function runBacktestChunk(resume) {
     }
   }
 
-  // ── 50회 단위 검증 루프 ──
-  var CHUNK_SIZE = 50;
+  // ── 전체 검증 루프 (5회마다 자동 저장) ──
+  var CHUNK_SIZE = testDraws.length;  // v2.5.2: 전체 한번에 실행
   var startIdx   = BT_STATE.nextIdx;
   var endIdx     = Math.min(startIdx + CHUNK_SIZE, testDraws.length);
   var currentProbMap = BT_STATE.currentProbMap;
 
-  $('btStatus').textContent = '② 검증 중: ' + (TRAIN_UNTIL+startIdx+1) + '~' + (TRAIN_UNTIL+endIdx) + '회차';
-  tlog('▶ '+( TRAIN_UNTIL+startIdx+1)+'~'+(TRAIN_UNTIL+endIdx)+'회차 검증 ('+CHUNK_SIZE+'회 단위)','ti');
+  $('btStatus').textContent = '② 검증 중: ' + (TRAIN_UNTIL+startIdx+1) + '~' + (TRAIN_UNTIL+endIdx) + '회차 (5회마다 자동 저장)';
+  tlog('▶ '+( TRAIN_UNTIL+startIdx+1)+'~'+(TRAIN_UNTIL+endIdx)+'회차 검증 시작 (5회마다 자동 저장)','ti');
 
   try {
     for(var ti=startIdx; ti<endIdx; ti++) {
@@ -1279,6 +1388,14 @@ async function runBacktestChunk(resume) {
       var hitColor = hitCount>=4?'#f5a623':hitCount>=3?'#00ff88':'#8b949e';
       btLog(roundNo+'회 ['+hitCount+'개] 예측:'+predicted.join(',')+'  실제:'+actual.join(','), hitColor);
 
+      // ★ v2.5.2: 매 회차마다 nextIdx 업데이트 및 진행도 저장
+      BT_STATE.nextIdx = ti + 1;
+      BT_STATE.currentProbMap = currentProbMap;
+      
+      // 매 회차마다 Firebase 진행도 저장 (중단 후 재개 위해)
+      await saveBtProgressToFirebase();
+      await saveBtCheckpoint();  // 로컬도 함께 저장
+
       if((ti-startIdx)%5===0) {
         await new Promise(function(r){ setTimeout(r,0); });
       }
@@ -1288,57 +1405,44 @@ async function runBacktestChunk(resume) {
     BT_STATE.nextIdx = endIdx;
     BT_STATE.currentProbMap = currentProbMap;
 
-    // Firebase 저장 (청크 완료마다)
-    var savedIter = await saveBacktestState(currentProbMap, 'backtest_chunk');
-    tlog('💾 '+endIdx+'번째 회차까지 저장 — iter:'+savedIter,'ti');
-    $('btnApplyBt').style.display = 'block';
-
-    // ★ 로컬 체크포인트 저장 (브라우저 재진입 시 복원용)
+    // ★ 최종 진행도 저장
+    await saveBtProgressToFirebase();
     await saveBtCheckpoint();
+    
+    // ★ "로또 웹에 적용" 버튼 표시 (사용자가 원할 때만 적용)
+    $('btnApplyBt').style.display = 'block';
+    tlog('💾 진행도 저장 완료 — [✅ 로또 웹에 적용] 버튼으로 학습 결과를 로또 웹에 반영할 수 있습니다','ti');
 
     renderCurve();
     renderHM(currentProbMap);
     renderBar(currentProbMap);
 
-    var remain = testDraws.length - endIdx;
-    if(remain <= 0) {
-      // 데이터 소진
-      BT_STATE.repeatRound++;
-      BT_REPEAT_COUNT = BT_STATE.repeatRound;
-      $('btRepeatCount').textContent = BT_REPEAT_COUNT;
-      tlog('🏁 전체 검증 완료 — 총 '+BT_STATE.totalProcessed+'회차 처리 | 반복 '+BT_STATE.repeatRound+'회','ts');
+    // 전체 완료 (CHUNK_SIZE = testDraws.length이므로 항상 완료)
+    BT_STATE.repeatRound++;
+    BT_REPEAT_COUNT = BT_STATE.repeatRound;
+    $('btRepeatCount').textContent = BT_REPEAT_COUNT;
+    tlog('🏁 전체 검증 완료 — 총 '+BT_STATE.totalProcessed+'회차 처리 | 반복 '+BT_STATE.repeatRound+'회','ts');
 
-      if($('btRepeat').checked) {
-        BT_STATE.nextIdx = 0;
-        BT_STATE.cumulativeHistory = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.numbers;});
-        BT_STATE.cumulativeBonus   = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.bonus;}).filter(function(b){return b&&b>=1&&b<=45;});
-        BT.running = false;
-        $('btnBacktest').disabled = false;
-        $('btnRun').disabled = false;
-        btLog('── 자동 반복 #'+BT_STATE.repeatRound+' 시작 ──', '#a371f7');
-        await new Promise(function(r){setTimeout(r,1000);});
-        runBacktestChunk(true);
-        return;
-      }
-      $('btStatus').textContent = '✅ 전체 완료! 총 '+BT_STATE.totalProcessed+'회차 | 반복 '+BT_STATE.repeatRound+'회';
-      $('btnBtContinue').style.display = 'none';
-      $('btnBtRestart').style.display = 'inline-block';
-      await clearBtCheckpoint();  // ★ 완료 시 체크포인트 삭제
-    } else {
-      $('btStatus').textContent = '⏸ '+endIdx+'회차 완료 (남은 '+remain+'회) — 계속하거나 결과 확인';
-      btLog('── '+endIdx+'회 체크포인트 ── 남은 '+remain+'회', '#58a6ff');
-
-      if($('btAutoNext').checked) {
-        // 자동 계속
-        BT.running = false;
-        await new Promise(function(r){setTimeout(r,500);});
-        runBacktestChunk(true);
-        return;
-      }
-      // 수동 계속 버튼 표시
-      $('btnBtContinue').style.display = 'inline-block';
-      $('btnBtRestart').style.display = 'inline-block';
+    if($('btRepeat').checked) {
+      // 자동 반복
+      BT_STATE.nextIdx = 0;
+      BT_STATE.cumulativeHistory = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.numbers;});
+      BT_STATE.cumulativeBonus   = allDraws.slice(0,TRAIN_UNTIL).map(function(d){return d.bonus;}).filter(function(b){return b&&b>=1&&b<=45;});
+      BT.running = false;
+      $('btnBacktest').disabled = false;
+      $('btnRun').disabled = false;
+      btLog('── 자동 반복 #'+BT_STATE.repeatRound+' 시작 ──', '#a371f7');
+      await new Promise(function(r){setTimeout(r,1000);});
+      runBacktestChunk(true);
+      return;
     }
+    
+    // 완료 - 체크포인트 삭제
+    $('btStatus').textContent = '✅ 전체 완료! 총 '+BT_STATE.totalProcessed+'회차 | 반복 '+BT_STATE.repeatRound+'회';
+    $('btnBtContinue').style.display = 'none';
+    $('btnBtRestart').style.display = 'inline-block';
+    await clearBtCheckpoint();
+    await clearBtProgressFromFirebase();
 
   } catch(e) {
     tlog('검증 오류: '+e.message,'te');
@@ -1358,6 +1462,7 @@ async function runBacktest() {
   BT_STATE.totalProcessed = 0;
   BT_STATE.allDraws = [];
   await clearBtCheckpoint();  // ★ 로컬 체크포인트 초기화
+  await clearBtProgressFromFirebase();  // ★ Firebase 진행도도 초기화
   runBacktestChunk(false);
 }
 
